@@ -421,6 +421,39 @@ class OpticCropEngine:
 
         return advisories
 
+    def predict_batch(self, df: pd.DataFrame) -> List[Dict[str, Any]]:
+        """
+        Runs bulk predictions on a dataframe.
+        Expects columns: nitrogen, phosphorus, potassium, temperature, humidity, ph, rainfall.
+        """
+        results = []
+        for idx, row in df.iterrows():
+            nitrogen = row.get("nitrogen", 90.0)
+            phosphorus = row.get("phosphorus", 42.0)
+            potassium = row.get("potassium", 43.0)
+            temperature = row.get("temperature", 25.0)
+            humidity = row.get("humidity", 75.0)
+            ph = row.get("ph", 6.5)
+            rainfall = row.get("rainfall", 100.0)
+            
+            res = self.predict_and_explain(
+                nitrogen, phosphorus, potassium, temperature, humidity, ph, rainfall, top_k=1
+            )
+            
+            results.append({
+                "nitrogen": nitrogen,
+                "phosphorus": phosphorus,
+                "potassium": potassium,
+                "temperature": temperature,
+                "humidity": humidity,
+                "ph": ph,
+                "rainfall": rainfall,
+                "predicted_crop": res["top_crop"],
+                "confidence": round(res["top_viability_score"] * 100, 2),
+                "summary": res["human_readable_summary"]
+            })
+            
+        return results
 
 # Singleton helper
 _engine_instance = None

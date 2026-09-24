@@ -57,6 +57,25 @@ def init_database():
     );
     """)
 
+    # 1.6 Prediction History Table
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS prediction_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        nitrogen REAL,
+        phosphorus REAL,
+        potassium REAL,
+        temperature REAL,
+        humidity REAL,
+        ph REAL,
+        rainfall REAL,
+        predicted_crop TEXT NOT NULL,
+        confidence REAL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users (id)
+    );
+    """)
+
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_crop ON soil_climate_samples (crop);")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_soil_params ON soil_climate_samples (nitrogen, phosphorus, potassium, ph);")
 
@@ -214,6 +233,38 @@ def get_historical_climate_fallback(lat: float, lon: float, geohash6: str = "") 
         "rainfall": 103.4,
         "is_fallback": True,
         "fallback_region": "Default Global",
+    }
+
+
+def get_admin_metrics() -> Dict[str, Any]:
+    """Returns system-wide metrics for the admin dashboard."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    cursor.execute("SELECT COUNT(*) as count FROM users")
+    total_users = cursor.fetchone()["count"]
+    
+    cursor.execute("SELECT COUNT(*) as count FROM prediction_history")
+    total_predictions = cursor.fetchone()["count"]
+    
+    # Get top predicted crop
+    cursor.execute("""
+        SELECT predicted_crop, COUNT(*) as count 
+        FROM prediction_history 
+        GROUP BY predicted_crop 
+        ORDER BY count DESC 
+        LIMIT 1
+    """)
+    row = cursor.fetchone()
+    top_crop = row["predicted_crop"] if row else "N/A"
+    
+    conn.close()
+    
+    return {
+        "total_users": total_users,
+        "total_predictions": total_predictions,
+        "top_crop": top_crop,
+        "system_status": "Healthy"
     }
 
 

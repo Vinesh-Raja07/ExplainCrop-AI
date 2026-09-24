@@ -284,13 +284,16 @@ with st.sidebar:
     st.caption("Inference Engine: FastAPI / XGBoost Hist")
 
 # Stitch Navigation Tabs
-tab_rec, tab_whatif, tab_analytics, tab_db, tab_multimodal = st.tabs(
+tab_rec, tab_whatif, tab_analytics, tab_db, tab_multimodal, tab_history, tab_batch, tab_admin = st.tabs(
     [
         "Recommendations & Factor Attribution",
         "Scenario Simulation",
         "Model Validation & Metrics",
         "Database Records",
         "🛰️ Multimodal India DataCube (YieldSAT / CropClimateX)",
+        "My History",
+        "Batch Prediction",
+        "Admin Dashboard"
     ]
 )
 
@@ -931,3 +934,91 @@ with tab_multimodal:
 
             st.info(f"💡 **Agronomic Synthesis**: {pred_res['explanation']}")
 
+
+# ==============================================================================
+# TAB 6: MY HISTORY
+# ==============================================================================
+with tab_history:
+    st.markdown("### Prediction History")
+    st.markdown("Your previous crop recommendations are securely stored and logged here.")
+    if st.button("Refresh History"):
+        st.rerun()
+
+    headers = {"Authorization": f"Bearer {st.session_state['token']}"}
+    try:
+        res = requests.get(f"{API_URL}/recommendations/history", headers=headers)
+        if res.status_code == 200:
+            history_data = res.json().get("data", [])
+            if len(history_data) > 0:
+                df_history = pd.DataFrame(history_data)
+                df_history = df_history.drop(columns=["id", "user_id"])
+                st.dataframe(df_history, use_container_width=True)
+            else:
+                st.info("No prediction history found. Run a recommendation first!")
+        else:
+            st.error("Could not fetch history.")
+    except Exception as e:
+        st.error(f"API Error: {e}")
+
+# ==============================================================================
+# TAB 7: BATCH PREDICTION (CSV UPLOAD)
+# ==============================================================================
+with tab_batch:
+    st.header("Bulk Crop Prediction (CSV Upload)")
+    st.write("Upload a CSV file with columns: nitrogen, phosphorus, potassium, temperature, humidity, ph, rainfall")
+    
+    uploaded_file = st.file_uploader("Choose a CSV file", type="csv", key="batch_upload")
+    
+    if uploaded_file is not None:
+        if st.button("Run Batch Prediction"):
+            with st.spinner("Processing batch file..."):
+                headers = {"Authorization": f"Bearer {st.session_state['access_token']}"}
+                files = {"file": (uploaded_file.name, uploaded_file.getvalue(), "text/csv")}
+                try:
+                    res = requests.post(f"{API_URL}/recommendations/predict/batch", headers=headers, files=files)
+                    if res.status_code == 200:
+                        batch_data = res.json()["data"]
+                        st.success(f"Successfully processed {len(batch_data)} rows!")
+                        st.dataframe(pd.DataFrame(batch_data), use_container_width=True)
+                        
+                        # Add a download button for the results
+                        csv = pd.DataFrame(batch_data).to_csv(index=False).encode('utf-8')
+                        st.download_button(
+                            label="Download Results as CSV",
+                            data=csv,
+                            file_name='batch_predictions_results.csv',
+                            mime='text/csv',
+                        )
+                    else:
+                        st.error(f"Error: {res.text}")
+                except Exception as e:
+                    st.error(f"Failed to connect to backend: {e}")
+
+# ==============================================================================
+# TAB 8: ADMIN DASHBOARD
+# ==============================================================================
+with tab_admin:
+    st.header("Admin Dashboard")
+    
+    # We could theoretically check if the user is an admin via JWT or state
+    # For now, let's just make the request.
+    if st.button("Refresh Admin Metrics"):
+        with st.spinner("Fetching system metrics..."):
+            headers = {"Authorization": f"Bearer {st.session_state['access_token']}"}
+            try:
+                res = requests.get(f"{API_URL}/admin/metrics", headers=headers)
+                if res.status_code == 200:
+                    metrics = res.json()["data"]
+                    
+                    col1, col2, col3, col4 = st.columns(4)
+                    col1.metric("Total Users", metrics["total_users"])
+                    col2.metric("Total Predictions", metrics["total_predictions"])
+                    col3.metric("Top Predicted Crop", metrics["top_crop"])
+                    col4.metric("System Status", metrics["system_status"])
+                    
+                elif res.status_code == 403:
+                    st.error("Access Denied: You must be an Admin to view this dashboard.")
+                else:
+                    st.error(f"Error fetching metrics: {res.text}")
+            except Exception as e:
+                st.error(f"Connection failed: {e}")

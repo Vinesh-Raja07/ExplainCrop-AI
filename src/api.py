@@ -323,6 +323,31 @@ def predict_crop_recommendations(request: Request, payload: PredictRequest, curr
             
     logger.info(f"Inference completed in {total_ms:.1f}ms. Top recommendation: {recommendations[0]['crop']}")
 
+    # Store in prediction_history table
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id FROM users WHERE username = ?", (current_user,))
+    user_row = cursor.fetchone()
+    if user_row:
+        user_id = user_row["id"]
+        cursor.execute("""
+            INSERT INTO prediction_history (
+                user_id, nitrogen, phosphorus, potassium, temperature, humidity, ph, rainfall, predicted_crop, confidence
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            user_id,
+            payload.soil_profile.nitrogen_mg_kg,
+            payload.soil_profile.phosphorus_mg_kg,
+            payload.soil_profile.potassium_mg_kg,
+            temperature,
+            humidity,
+            payload.soil_profile.ph_level,
+            rainfall,
+            recommendations[0]["crop"],
+            recommendations[0]["viability_score"]
+        ))
+        conn.commit()
+    conn.close()
     return {
         "status": "success",
         "data": {
@@ -345,6 +370,65 @@ def predict_crop_recommendations(request: Request, payload: PredictRequest, curr
     }
 
 
+@app.get("/api/v1/recommendations/history", tags=["Core Inference"])
+@limiter.limit("20/minute")
+def get_prediction_history(request: Request, current_user: str = Depends(get_current_user)):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id FROM users WHERE username = ?", (current_user,))
+    user_row = cursor.fetchone()
+    if not user_row:
+        conn.close()
+        raise HTTPException(status_code=404, detail="User not found")
+        
+    cursor.execute(
+        "SELECT * FROM prediction_history WHERE user_id = ? ORDER BY created_at DESC", 
+        (user_row["id"],)
+    )
+    rows = cursor.fetchall()
+    conn.close()
+    
+    history = [dict(row) for row in rows]
+    return {"status": "success", "data": history}
+
+from fastapi import UploadFile, File
+import pandas as pd
+import io
+
+@app.post("/api/v1/recommendations/predict/batch", tags=["Core Inference"])
+@limiter.limit("5/minute")
+def predict_batch(request: Request, file: UploadFile = File(...), current_user: str = Depends(get_current_user)):
+    """Handles bulk CSV predictions."""
+    try:
+        contents = file.file.read()
+        df = pd.read_csv(io.BytesIO(contents))
+        
+        # Ensure correct column names via mapping if necessary, or assume already correct.
+        engine = get_engine()
+        results = engine.predict_batch(df)
+        
+        return {"status": "success", "data": results}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+        
+@app.get("/api/v1/admin/metrics", tags=["Admin"])
+@limiter.limit("20/minute")
+def get_admin_metrics_api(request: Request, current_user: str = Depends(get_current_user)):
+    """Fetches system health and prediction metrics for the admin dashboard."""
+    # In a real app, verify the user has the 'Admin' role here.
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT role FROM users WHERE username = ?", (current_user,))
+    user_row = cursor.fetchone()
+    conn.close()
+    
+    if not user_row or user_row["role"] != "Admin":
+        raise HTTPException(status_code=403, detail="Not authorized. Admin role required.")
+        
+    from src.db import get_admin_metrics
+    metrics = get_admin_metrics()
+    return {"status": "success", "data": metrics}
+        
 @app.post("/api/v1/recommendations/simulate", tags=["Scenario Simulation"])
 @limiter.limit("20/minute")
 def simulate_what_if(request: Request, payload: SimulationRequest):
