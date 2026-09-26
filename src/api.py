@@ -147,6 +147,23 @@ class SimulationRequest(BaseModel):
     top_k: Optional[int] = Field(3, ge=1, le=10)
 
 
+class FertilizerRequest(BaseModel):
+    crop_name: str = Field(..., json_schema_extra={"example": "Rice"})
+    soil_profile: SoilProfile
+    field_area_acres: Optional[float] = Field(1.0, ge=0.1, le=1000.0, json_schema_extra={"example": 1.0})
+
+
+class IrrigationRequest(BaseModel):
+    crop_name: str = Field(..., json_schema_extra={"example": "Rice"})
+    temperature: float = Field(..., ge=-10.0, le=60.0, json_schema_extra={"example": 28.5})
+    humidity: float = Field(..., ge=0.0, le=100.0, json_schema_extra={"example": 75.0})
+    rainfall_14d_mm: float = Field(..., ge=0.0, le=1500.0, json_schema_extra={"example": 45.0})
+    growth_stage: Optional[str] = Field("mid", json_schema_extra={"example": "mid"})
+    field_area_acres: Optional[float] = Field(1.0, ge=0.1, le=1000.0, json_schema_extra={"example": 1.0})
+    soil_type: Optional[str] = Field("Loamy", json_schema_extra={"example": "Loamy"})
+    irrigation_method: Optional[str] = Field("Drip Irrigation", json_schema_extra={"example": "Drip Irrigation"})
+
+
 @app.get("/", tags=["Health & Metadata"])
 def root():
     return {
@@ -650,3 +667,38 @@ def revoke_api_key(request: Request, key_id: int, current_user: str = Depends(ge
     from src.db import delete_api_key
     delete_api_key(key_id=key_id, user_id=user_row["id"])
     return {"status": "success"}
+
+
+# --- AGRONOMIC ADVISORY ENDPOINTS ---
+
+@app.post("/api/v1/advisory/fertilizer", tags=["Agronomic Advisory"])
+@limiter.limit("60/minute")
+def get_fertilizer_advisory(request: Request, payload: FertilizerRequest, current_user: str = Depends(get_current_user_or_api_key)):
+    from src.fertilizer_advisor import calculate_nutrient_prescription
+    result = calculate_nutrient_prescription(
+        crop_name=payload.crop_name,
+        soil_n=payload.soil_profile.nitrogen_mg_kg,
+        soil_p=payload.soil_profile.phosphorus_mg_kg,
+        soil_k=payload.soil_profile.potassium_mg_kg,
+        soil_ph=payload.soil_profile.ph_level,
+        field_area_acres=payload.field_area_acres or 1.0
+    )
+    return {"status": "success", "data": result}
+
+
+@app.post("/api/v1/advisory/irrigation", tags=["Agronomic Advisory"])
+@limiter.limit("60/minute")
+def get_irrigation_advisory(request: Request, payload: IrrigationRequest, current_user: str = Depends(get_current_user_or_api_key)):
+    from src.irrigation_scheduler import calculate_irrigation_schedule
+    result = calculate_irrigation_schedule(
+        crop_name=payload.crop_name,
+        temperature_c=payload.temperature,
+        humidity_pct=payload.humidity,
+        rainfall_14d_mm=payload.rainfall_14d_mm,
+        growth_stage=payload.growth_stage or "mid",
+        field_area_acres=payload.field_area_acres or 1.0,
+        soil_type=payload.soil_type or "Loamy",
+        irrigation_method=payload.irrigation_method or "Drip Irrigation"
+    )
+    return {"status": "success", "data": result}
+
