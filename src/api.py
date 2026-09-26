@@ -60,10 +60,10 @@ app.add_middleware(
 
 # Pydantic Schemas
 class SoilProfile(BaseModel):
-    nitrogen_mg_kg: float = Field(..., ge=0.0, le=300.0, description="Nitrogen content (mg/kg or ratio)", example=135.0)
-    phosphorus_mg_kg: float = Field(..., ge=0.0, le=300.0, description="Phosphorus content (mg/kg or ratio)", example=42.0)
-    potassium_mg_kg: float = Field(..., ge=0.0, le=300.0, description="Potassium content (mg/kg or ratio)", example=55.0)
-    ph_level: float = Field(..., ge=2.0, le=12.0, description="Soil pH level", example=6.7)
+    nitrogen_mg_kg: float = Field(..., ge=0.0, le=300.0, description="Nitrogen content (mg/kg or ratio)", json_schema_extra={"example": 135.0})
+    phosphorus_mg_kg: float = Field(..., ge=0.0, le=300.0, description="Phosphorus content (mg/kg or ratio)", json_schema_extra={"example": 42.0})
+    potassium_mg_kg: float = Field(..., ge=0.0, le=300.0, description="Potassium content (mg/kg or ratio)", json_schema_extra={"example": 55.0})
+    ph_level: float = Field(..., ge=2.0, le=12.0, description="Soil pH level", json_schema_extra={"example": 6.7})
 
 
 class UserCreate(BaseModel):
@@ -93,11 +93,11 @@ class FeedbackCreate(BaseModel):
 
 
 class PredictRequest(BaseModel):
-    latitude: float = Field(..., ge=-90.0, le=90.0, description="GPS Latitude coordinate", example=13.0827)
-    longitude: float = Field(..., ge=-180.0, le=180.0, description="GPS Longitude coordinate", example=80.2707)
+    latitude: float = Field(..., ge=-90.0, le=90.0, description="GPS Latitude coordinate", json_schema_extra={"example": 13.0827})
+    longitude: float = Field(..., ge=-180.0, le=180.0, description="GPS Longitude coordinate", json_schema_extra={"example": 80.2707})
     soil_profile: SoilProfile
-    forecast_window_days: Optional[int] = Field(14, ge=1, le=30, description="Meteorological forecast window in days", example=14)
-    top_k: Optional[int] = Field(3, ge=1, le=10, description="Number of ranked crops to return", example=3)
+    forecast_window_days: Optional[int] = Field(14, ge=1, le=30, description="Meteorological forecast window in days", json_schema_extra={"example": 14})
+    top_k: Optional[int] = Field(3, ge=1, le=10, description="Number of ranked crops to return", json_schema_extra={"example": 3})
 
 
 class FactorItem(BaseModel):
