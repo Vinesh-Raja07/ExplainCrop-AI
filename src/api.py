@@ -164,6 +164,13 @@ class IrrigationRequest(BaseModel):
     irrigation_method: Optional[str] = Field("Drip Irrigation", json_schema_extra={"example": "Drip Irrigation"})
 
 
+class DiseaseRiskRequest(BaseModel):
+    crop_name: str = Field(..., json_schema_extra={"example": "Rice"})
+    temperature: float = Field(..., ge=-10.0, le=60.0, json_schema_extra={"example": 26.5})
+    humidity: float = Field(..., ge=0.0, le=100.0, json_schema_extra={"example": 88.0})
+    rainfall_14d_mm: float = Field(..., ge=0.0, le=1500.0, json_schema_extra={"example": 95.0})
+
+
 @app.get("/", tags=["Health & Metadata"])
 def root():
     return {
@@ -701,4 +708,18 @@ def get_irrigation_advisory(request: Request, payload: IrrigationRequest, curren
         irrigation_method=payload.irrigation_method or "Drip Irrigation"
     )
     return {"status": "success", "data": result}
+
+
+@app.post("/api/v1/advisory/disease-risk", tags=["Agronomic Advisory"])
+@limiter.limit("60/minute")
+def get_disease_risk_advisory(request: Request, payload: DiseaseRiskRequest, current_user: str = Depends(get_current_user_or_api_key)):
+    from src.disease_risk import calculate_disease_pest_risk
+    result = calculate_disease_pest_risk(
+        crop_name=payload.crop_name,
+        temperature_c=payload.temperature,
+        humidity_pct=payload.humidity,
+        rainfall_14d_mm=payload.rainfall_14d_mm
+    )
+    return {"status": "success", "data": result}
+
 
