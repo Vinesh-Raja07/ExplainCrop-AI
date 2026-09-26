@@ -171,6 +171,15 @@ class DiseaseRiskRequest(BaseModel):
     rainfall_14d_mm: float = Field(..., ge=0.0, le=1500.0, json_schema_extra={"example": 95.0})
 
 
+class EconomicsRequest(BaseModel):
+    crop_name: str = Field(..., json_schema_extra={"example": "Rice"})
+    viability_score: Optional[float] = Field(0.90, ge=0.0, le=1.0, json_schema_extra={"example": 0.90})
+    field_area_acres: Optional[float] = Field(1.0, ge=0.1, le=1000.0, json_schema_extra={"example": 1.0})
+    custom_market_price_quintal: Optional[float] = Field(None, ge=0.0, json_schema_extra={"example": 2203.0})
+    fertilizer_cost_inr: Optional[float] = Field(4500.0, ge=0.0, json_schema_extra={"example": 4500.0})
+    irrigation_cost_inr: Optional[float] = Field(2500.0, ge=0.0, json_schema_extra={"example": 2500.0})
+
+
 @app.get("/", tags=["Health & Metadata"])
 def root():
     return {
@@ -721,5 +730,21 @@ def get_disease_risk_advisory(request: Request, payload: DiseaseRiskRequest, cur
         rainfall_14d_mm=payload.rainfall_14d_mm
     )
     return {"status": "success", "data": result}
+
+
+@app.post("/api/v1/advisory/economics", tags=["Agronomic Advisory"])
+@limiter.limit("60/minute")
+def get_economics_advisory(request: Request, payload: EconomicsRequest, current_user: str = Depends(get_current_user_or_api_key)):
+    from src.economics_engine import calculate_crop_profitability
+    result = calculate_crop_profitability(
+        crop_name=payload.crop_name,
+        viability_score=payload.viability_score or 0.90,
+        field_area_acres=payload.field_area_acres or 1.0,
+        custom_market_price_quintal=payload.custom_market_price_quintal,
+        fertilizer_cost_inr=payload.fertilizer_cost_inr or 4500.0,
+        irrigation_cost_inr=payload.irrigation_cost_inr or 2500.0
+    )
+    return {"status": "success", "data": result}
+
 
 
