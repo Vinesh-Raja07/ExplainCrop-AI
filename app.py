@@ -38,7 +38,7 @@ st.set_page_config(
 # Google Stitch Enterprise Design System CSS
 st.markdown(
     """
-    <style>
+<style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
     html, body, [class*="css"] {
@@ -146,8 +146,8 @@ if "persona" not in st.session_state:
 
 # Stitch Header
 st.markdown(
-    """
-    <div class="stitch-header">
+    f"""
+<div class="stitch-header">
         <div>
             <div class="stitch-brand">CropMind AI: Climate-Resilient Recommendation System</div>
             <div class="stitch-tagline">
@@ -247,7 +247,10 @@ with st.sidebar:
                         st.session_state["rainfall"] = float(w_res["rainfall_equivalent"])
                         st.session_state["active_location"] = f"{geo_res['name']}, {geo_res.get('country','')}".strip(", ")
                         st.session_state["geohash"] = w_res.get("geohash6", "")
-                        st.success(f"Synchronized: {st.session_state['active_location']}")
+                        st.session_state["weather_source"] = w_res.get("source", "unknown")
+                        
+                        source_badge = "⚡ Live API" if w_res.get("source") == "live_api" else "💾 DB Cache" if w_res.get("source") == "cache" else "📊 Historical Fallback"
+                        st.success(f"Synchronized: {st.session_state['active_location']} | {source_badge}")
                     else:
                         st.error(geo_res.get("error", "Geocoding failed."))
             else:
@@ -284,7 +287,7 @@ with st.sidebar:
     st.caption("Inference Engine: FastAPI / XGBoost Hist")
 
 # Stitch Navigation Tabs
-tab_rec, tab_whatif, tab_analytics, tab_db, tab_multimodal, tab_history, tab_batch, tab_admin = st.tabs(
+tab_rec, tab_whatif, tab_analytics, tab_db, tab_multimodal, tab_history, tab_batch, tab_admin, tab_farms, tab_api = st.tabs(
     [
         "Recommendations & Factor Attribution",
         "Scenario Simulation",
@@ -293,7 +296,9 @@ tab_rec, tab_whatif, tab_analytics, tab_db, tab_multimodal, tab_history, tab_bat
         "🛰️ Multimodal India DataCube (YieldSAT / CropClimateX)",
         "My History",
         "Batch Prediction",
-        "Admin Dashboard"
+        "Admin Dashboard",
+        "My Farms",
+        "Developer API"
     ]
 )
 
@@ -524,6 +529,26 @@ with tab_rec:
                     """,
                     unsafe_allow_html=True,
                 )
+
+    # FEEDBACK WIDGET
+    st.markdown("---")
+    st.markdown("### Provide Feedback on this Recommendation")
+    with st.expander("Rate this Prediction", expanded=False):
+        with st.form("feedback_form"):
+            rating = st.selectbox("How accurate was this recommendation?", ["👍 Excellent", "👌 Good", "👎 Poor"])
+            comments = st.text_area("Additional Comments")
+            fb_submit = st.form_submit_button("Submit Feedback")
+            if fb_submit:
+                payload = {"rating": rating, "comments": comments}
+                headers = {"Authorization": f"Bearer {st.session_state['token']}"}
+                try:
+                    res = requests.post(f"{API_URL}/feedback", headers=headers, json=payload)
+                    if res.status_code == 200:
+                        st.success("Thank you for your feedback! It helps improve CropMind AI.")
+                    else:
+                        st.error("Failed to submit feedback.")
+                except Exception as e:
+                    st.error(f"API Error: {e}")
 
 # ==============================================================================
 # TAB 2: SCENARIO SIMULATION
@@ -972,7 +997,7 @@ with tab_batch:
     if uploaded_file is not None:
         if st.button("Run Batch Prediction"):
             with st.spinner("Processing batch file..."):
-                headers = {"Authorization": f"Bearer {st.session_state['access_token']}"}
+                headers = {"Authorization": f"Bearer {st.session_state['token']}"}
                 files = {"file": (uploaded_file.name, uploaded_file.getvalue(), "text/csv")}
                 try:
                     res = requests.post(f"{API_URL}/recommendations/predict/batch", headers=headers, files=files)
@@ -1004,7 +1029,7 @@ with tab_admin:
     # For now, let's just make the request.
     if st.button("Refresh Admin Metrics"):
         with st.spinner("Fetching system metrics..."):
-            headers = {"Authorization": f"Bearer {st.session_state['access_token']}"}
+            headers = {"Authorization": f"Bearer {st.session_state['token']}"}
             try:
                 res = requests.get(f"{API_URL}/admin/metrics", headers=headers)
                 if res.status_code == 200:
@@ -1016,9 +1041,134 @@ with tab_admin:
                     col3.metric("Top Predicted Crop", metrics["top_crop"])
                     col4.metric("System Status", metrics["system_status"])
                     
+                    st.markdown("---")
+                    st.subheader("Recent User Feedback")
+                    fb_res = requests.get(f"{API_URL}/feedback", headers=headers)
+                    if fb_res.status_code == 200:
+                        fbs = fb_res.json().get("data", [])
+                        if fbs:
+                            st.dataframe(pd.DataFrame(fbs), use_container_width=True)
+                        else:
+                            st.info("No feedback records found.")
+                    
                 elif res.status_code == 403:
                     st.error("Access Denied: You must be an Admin to view this dashboard.")
                 else:
                     st.error(f"Error fetching metrics: {res.text}")
             except Exception as e:
                 st.error(f"Connection failed: {e}")
+
+# ==============================================================================
+# TAB 9: MY FARMS
+# ==============================================================================
+with tab_farms:
+    st.header("My Farms (Saved Profiles)")
+    st.write("Save your farm's soil profile and coordinates to quickly load them later.")
+    
+    headers = {"Authorization": f"Bearer {st.session_state['token']}"}
+    
+    # 1. Create a new Farm
+    with st.expander("➕ Add New Farm", expanded=False):
+        with st.form("add_farm_form"):
+            farm_name = st.text_input("Farm Name (e.g., 'North Field')")
+            f_lat = st.number_input("Latitude", value=13.0, min_value=-90.0, max_value=90.0)
+            f_lon = st.number_input("Longitude", value=80.0, min_value=-180.0, max_value=180.0)
+            f_n = st.number_input("Nitrogen (mg/kg)", value=90.0)
+            f_p = st.number_input("Phosphorus (mg/kg)", value=42.0)
+            f_k = st.number_input("Potassium (mg/kg)", value=43.0)
+            f_ph = st.number_input("pH Level", value=6.5, min_value=2.0, max_value=12.0)
+            submitted = st.form_submit_button("Save Farm")
+            
+            if submitted and farm_name:
+                payload = {
+                    "farm_name": farm_name, "latitude": f_lat, "longitude": f_lon,
+                    "nitrogen": f_n, "phosphorus": f_p, "potassium": f_k, "ph": f_ph
+                }
+                res = requests.post(f"{API_URL}/farms", headers=headers, json=payload)
+                if res.status_code == 200:
+                    st.success(f"Farm '{farm_name}' saved successfully!")
+                else:
+                    st.error("Failed to save farm.")
+
+    # 2. List & Manage Farms
+    if st.button("Refresh My Farms"):
+        st.rerun()
+        
+    try:
+        res = requests.get(f"{API_URL}/farms", headers=headers)
+        if res.status_code == 200:
+            farms = res.json().get("data", [])
+            if not farms:
+                st.info("You haven't saved any farms yet.")
+            else:
+                for farm in farms:
+                    col1, col2, col3 = st.columns([3, 1, 1])
+                    with col1:
+                        st.markdown(f"**{farm['farm_name']}** (Lat: {farm['latitude']}, Lon: {farm['longitude']})")
+                        st.caption(f"N: {farm['nitrogen']} | P: {farm['phosphorus']} | K: {farm['potassium']} | pH: {farm['ph']}")
+                    with col2:
+                        if st.button("Load Profile", key=f"load_{farm['id']}"):
+                            st.session_state["nitrogen"] = farm['nitrogen']
+                            st.session_state["phosphorus"] = farm['phosphorus']
+                            st.session_state["potassium"] = farm['potassium']
+                            st.session_state["ph"] = farm['ph']
+                            st.session_state["active_location"] = farm['farm_name']
+                            st.success(f"Loaded {farm['farm_name']} into recommendation engine!")
+                    with col3:
+                        if st.button("Delete", key=f"del_{farm['id']}", type="primary"):
+                            d_res = requests.delete(f"{API_URL}/farms/{farm['id']}", headers=headers)
+                            if d_res.status_code == 200:
+                                st.rerun()
+        else:
+            st.error("Could not fetch farms.")
+    except Exception as e:
+        st.error(f"API Error: {e}")
+
+
+# ==============================================================================
+# TAB 10: DEVELOPER API
+# ==============================================================================
+with tab_api:
+    st.header("Developer API Keys")
+    st.write("Generate API keys to programmatically interact with the CropMind AI prediction engine.")
+    
+    col_k1, col_k2 = st.columns([1, 2])
+    with col_k1:
+        if st.button("Generate New API Key"):
+            headers = {"Authorization": f"Bearer {st.session_state['token']}"}
+            res = requests.post(f"{API_URL}/keys", headers=headers)
+            if res.status_code == 200:
+                new_key = res.json()["api_key"]
+                st.success("API Key Generated Successfully!")
+                st.code(new_key, language="bash")
+                st.info("Please copy your key now. For security reasons, you cannot view it again.")
+            else:
+                st.error("Failed to generate API Key.")
+                
+    with col_k2:
+        st.subheader("Your Active API Keys")
+        headers = {"Authorization": f"Bearer {st.session_state['token']}"}
+        res = requests.get(f"{API_URL}/keys", headers=headers)
+        if res.status_code == 200:
+            keys = res.json().get("data", [])
+            if keys:
+                for k in keys:
+                    st.markdown(f"**Key ID:** {k['id']} | **Created:** {k['created_at']}")
+                    if st.button(f"Revoke Key {k['id']}", key=f"revoke_{k['id']}"):
+                        d_res = requests.delete(f"{API_URL}/keys/{k['id']}", headers=headers)
+                        if d_res.status_code == 200:
+                            st.success(f"Key {k['id']} revoked.")
+                            st.rerun()
+                        else:
+                            st.error("Failed to revoke key.")
+                    st.markdown("---")
+            else:
+                st.info("You don't have any active API keys.")
+                
+    st.markdown("### Example Usage")
+    st.code('''
+curl -X POST "http://localhost:8000/api/v1/recommendations/predict" \\
+     -H "X-API-Key: cm_your_api_key_here" \\
+     -H "Content-Type: application/json" \\
+     -d '{"latitude": 13.0, "longitude": 80.2, "nitrogen": 90, "phosphorus": 42, "potassium": 43, "ph": 6.5}'
+    ''', language="bash")

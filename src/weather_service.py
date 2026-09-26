@@ -15,7 +15,7 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
 
-from src.db import get_historical_climate_fallback
+from src.db import get_historical_climate_fallback, get_weather_cache, set_weather_cache
 
 # Geohash Base32 Character Map
 GEOHASH_BASE32 = "0123456789bcdefghjkmnpqrstuvwxyz"
@@ -58,30 +58,7 @@ def encode_geohash(lat: float, lon: float, precision: int = 6) -> str:
     return "".join(geohash)
 
 
-class WeatherSpatialCache:
-    """In-memory spatial cache indexed by Geohash Level 6 with 1-hour TTL."""
-    def __init__(self, ttl_seconds: int = 3600):
-        self.ttl = ttl_seconds
-        self.cache: Dict[str, Dict[str, Any]] = {}
 
-    def get(self, geohash6: str) -> Optional[Dict[str, Any]]:
-        if geohash6 in self.cache:
-            entry = self.cache[geohash6]
-            if time.time() - entry["timestamp"] < self.ttl:
-                return entry["data"]
-            else:
-                del self.cache[geohash6]
-        return None
-
-    def set(self, geohash6: str, data: Dict[str, Any]):
-        self.cache[geohash6] = {
-            "timestamp": time.time(),
-            "data": data,
-        }
-
-
-# Global spatial cache instance
-_spatial_cache = WeatherSpatialCache(ttl_seconds=3600)
 
 
 def fetch_weather_stream(
@@ -98,7 +75,7 @@ def fetch_weather_stream(
     geohash6 = encode_geohash(latitude, longitude, precision=6)
 
     # 1. Check Spatial Cache (Geohash Level-6, 1hr TTL)
-    cached_payload = _spatial_cache.get(geohash6)
+    cached_payload = get_weather_cache(geohash6)
     if cached_payload is not None:
         fetch_ms = (time.perf_counter() - t0) * 1000.0
         return {
@@ -145,7 +122,15 @@ def fetch_weather_stream(
         }
 
         # Store in Geohash Cache
-        _spatial_cache.set(geohash6, weather_data)
+        set_weather_cache(
+            geohash6=geohash6, 
+            lat=latitude, 
+            lon=longitude, 
+            forecast_days=forecast_window_days, 
+            temp=weather_data["temperature_avg"], 
+            hum=weather_data["humidity_avg"], 
+            rain=weather_data["rainfall_equivalent"]
+        )
 
         fetch_ms = (time.perf_counter() - t0) * 1000.0
         return {

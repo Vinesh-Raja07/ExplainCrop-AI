@@ -1,0 +1,53 @@
+TRANSLATIONS = {
+    "English": {
+        "title": "CropMind AI: Climate-Resilient Recommendation System",
+        "tagline": "Explainable Multi-Modal Learning via XGBoost (Hist Tree), TreeSHAP Local Attribution, and Real-Time Weather APIs",
+        "login": "Login to CropMind AI",
+        "username": "Username",
+        "password": "Password",
+        "register": "Register",
+        "logout": "Logout",
+        "welcome": "Welcome",
+        "recommendations": "Recommendations & Factor Attribution",
+        "simulation": "Scenario Simulation",
+        "admin": "Admin Dashboard",
+        "api_keys": "Developer API",
+        "my_farms": "My Farms",
+        "sync_weather": "Sync Weather",
+        "location": "Location or City Name"
+    },
+    "Hindi": {
+        "title": "क्रॉपमाइंड एआई: जलवायु-लचीला सिफारिश प्रणाली",
+        "tagline": "XGBoost और ट्रीशप के माध्यम से व्याख्यात्मक मल्टी-मोडल लर्निंग",
+        "login": "क्रॉपमाइंड एआई में लॉग इन करें",
+        "username": "उपयोगकर्ता नाम",
+        "password": "पासवर्ड",
+        "register": "पंजीकरण करें",
+        "logout": "लॉग आउट",
+        "welcome": "स्वागत है",
+        "recommendations": "सिफारिशें और कारक एट्रिब्यूशन",
+        "simulation": "परिदृश्य सिमुलेशन",
+        "admin": "व्यवस्थापक डैशबोर्ड",
+        "api_keys": "डेवलपर एपीआई",
+        "my_farms": "मेरे खेत",
+        "sync_weather": "मौसम सिंक करें",
+        "location": "स्थान या शहर का नाम"
+    },
+    "Spanish": {
+        "title": "CropMind AI: Sistema de Recomendación Resiliente al Clima",
+        "tagline": "Aprendizaje Multimodal Explicable a través de XGBoost (Hist Tree), Atribución Local TreeSHAP y APIs Meteorológicas",
+        "login": "Iniciar sesión en CropMind AI",
+        "username": "Nombre de usuario",
+        "password": "Contraseña",
+        "register": "Registro",
+        "logout": "Cerrar sesión",
+        "welcome": "Bienvenido",
+        "recommendations": "Recomendaciones y Atribución",
+        "simulation": "Simulación de Escenarios",
+        "admin": "Panel de Administración",
+        "api_keys": "API de Desarrollador",
+        "my_farms": "Mis Granjas",
+        "sync_weather": "Sincronizar Clima",
+        "location": "Ubicación o Nombre de la Ciudad"
+    }
+}
