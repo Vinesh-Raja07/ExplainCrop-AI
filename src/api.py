@@ -180,6 +180,15 @@ class EconomicsRequest(BaseModel):
     irrigation_cost_inr: Optional[float] = Field(2500.0, ge=0.0, json_schema_extra={"example": 2500.0})
 
 
+class SoilHealthRequest(BaseModel):
+    soil_profile: SoilProfile
+    rainfall_mm: float = Field(..., ge=0.0, le=2000.0, json_schema_extra={"example": 110.0})
+    temperature_c: float = Field(..., ge=-10.0, le=60.0, json_schema_extra={"example": 26.5})
+    field_area_acres: Optional[float] = Field(1.0, ge=0.1, le=1000.0, json_schema_extra={"example": 1.0})
+    organic_matter_pct: Optional[float] = Field(0.75, ge=0.1, le=10.0, json_schema_extra={"example": 0.75})
+    tillage_type: Optional[str] = Field("Conventional Tillage", json_schema_extra={"example": "Conventional Tillage"})
+
+
 @app.get("/", tags=["Health & Metadata"])
 def root():
     return {
@@ -745,6 +754,25 @@ def get_economics_advisory(request: Request, payload: EconomicsRequest, current_
         irrigation_cost_inr=payload.irrigation_cost_inr or 2500.0
     )
     return {"status": "success", "data": result}
+
+
+@app.post("/api/v1/advisory/soil-health", tags=["Agronomic Advisory"])
+@limiter.limit("60/minute")
+def get_soil_health_advisory(request: Request, payload: SoilHealthRequest, current_user: str = Depends(get_current_user_or_api_key)):
+    from src.soil_health import calculate_soil_health_and_carbon
+    result = calculate_soil_health_and_carbon(
+        soil_n=payload.soil_profile.nitrogen_mg_kg,
+        soil_p=payload.soil_profile.phosphorus_mg_kg,
+        soil_k=payload.soil_profile.potassium_mg_kg,
+        soil_ph=payload.soil_profile.ph_level,
+        rainfall_mm=payload.rainfall_mm,
+        temperature_c=payload.temperature_c,
+        field_area_acres=payload.field_area_acres or 1.0,
+        organic_matter_pct=payload.organic_matter_pct or 0.75,
+        tillage_type=payload.tillage_type or "Conventional Tillage"
+    )
+    return {"status": "success", "data": result}
+
 
 
 
