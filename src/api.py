@@ -11,7 +11,7 @@ import os
 import sys
 from typing import List, Dict, Any, Optional
 from pydantic import BaseModel, Field
-from fastapi import FastAPI, HTTPException, Query, status, Request, Depends
+from fastapi import FastAPI, HTTPException, Query, status, Request, Depends, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from loguru import logger
@@ -210,6 +210,20 @@ class SoilHealthRequest(BaseModel):
     field_area_acres: Optional[float] = Field(1.0, ge=0.1, le=1000.0, json_schema_extra={"example": 1.0})
     organic_matter_pct: Optional[float] = Field(0.75, ge=0.1, le=10.0, json_schema_extra={"example": 0.75})
     tillage_type: Optional[str] = Field("Conventional Tillage", json_schema_extra={"example": "Conventional Tillage"})
+
+
+class PdfReportRequest(BaseModel):
+    crop_name: str = Field(..., json_schema_extra={"example": "Rice"})
+    viability: float = Field(..., ge=0.0, le=1.0, json_schema_extra={"example": 0.95})
+    nitrogen: float = Field(..., ge=0.0, json_schema_extra={"example": 90.0})
+    phosphorus: float = Field(..., ge=0.0, json_schema_extra={"example": 42.0})
+    potassium: float = Field(..., ge=0.0, json_schema_extra={"example": 43.0})
+    ph: float = Field(..., ge=2.0, le=12.0, json_schema_extra={"example": 6.5})
+    temperature: float = Field(..., json_schema_extra={"example": 26.5})
+    humidity: float = Field(..., json_schema_extra={"example": 75.0})
+    rainfall: float = Field(..., json_schema_extra={"example": 110.0})
+    summary: str = Field(..., json_schema_extra={"example": "Optimal agronomic match with ideal hydrothermal conditions."})
+    location_name: Optional[str] = Field("Selected Coordinates", json_schema_extra={"example": "Coimbatore, India"})
 
 
 @app.get("/", tags=["Health & Metadata"])
@@ -795,6 +809,31 @@ def get_soil_health_advisory(request: Request, payload: SoilHealthRequest, curre
         tillage_type=payload.tillage_type or "Conventional Tillage"
     )
     return {"status": "success", "data": result}
+
+
+@app.post("/api/v1/reports/pdf", tags=["Agronomic Advisory"])
+@limiter.limit("30/minute")
+def download_pdf_report(request: Request, payload: PdfReportRequest, current_user: str = Depends(get_current_user_or_api_key)):
+    from src.pdf_generator import generate_crop_report
+    pdf_bytes = generate_crop_report(
+        crop_name=payload.crop_name,
+        viability=payload.viability,
+        n=payload.nitrogen,
+        p=payload.phosphorus,
+        k=payload.potassium,
+        temp=payload.temperature,
+        hum=payload.humidity,
+        ph=payload.ph,
+        rain=payload.rainfall,
+        summary=payload.summary,
+        location_name=payload.location_name
+    )
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename=CropMind_{payload.crop_name}_Advisory.pdf"}
+    )
+
 
 
 
