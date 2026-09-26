@@ -59,6 +59,8 @@ app.add_middleware(
 
 
 # Pydantic Schemas
+from pydantic import BaseModel, Field, model_validator
+
 class SoilProfile(BaseModel):
     nitrogen_mg_kg: float = Field(..., ge=0.0, le=300.0, description="Nitrogen content (mg/kg or ratio)", json_schema_extra={"example": 135.0})
     phosphorus_mg_kg: float = Field(..., ge=0.0, le=300.0, description="Phosphorus content (mg/kg or ratio)", json_schema_extra={"example": 42.0})
@@ -95,9 +97,30 @@ class FeedbackCreate(BaseModel):
 class PredictRequest(BaseModel):
     latitude: float = Field(..., ge=-90.0, le=90.0, description="GPS Latitude coordinate", json_schema_extra={"example": 13.0827})
     longitude: float = Field(..., ge=-180.0, le=180.0, description="GPS Longitude coordinate", json_schema_extra={"example": 80.2707})
-    soil_profile: SoilProfile
+    soil_profile: Optional[SoilProfile] = None
+    nitrogen: Optional[float] = None
+    phosphorus: Optional[float] = None
+    potassium: Optional[float] = None
+    ph: Optional[float] = None
     forecast_window_days: Optional[int] = Field(14, ge=1, le=30, description="Meteorological forecast window in days", json_schema_extra={"example": 14})
     top_k: Optional[int] = Field(3, ge=1, le=10, description="Number of ranked crops to return", json_schema_extra={"example": 3})
+
+    @model_validator(mode="before")
+    @classmethod
+    def assemble_soil_profile(cls, values):
+        if isinstance(values, dict):
+            if "soil_profile" not in values or values.get("soil_profile") is None:
+                n = values.get("nitrogen", values.get("nitrogen_mg_kg", 90.0))
+                p = values.get("phosphorus", values.get("phosphorus_mg_kg", 42.0))
+                k = values.get("potassium", values.get("potassium_mg_kg", 43.0))
+                ph = values.get("ph", values.get("ph_level", 6.5))
+                values["soil_profile"] = SoilProfile(
+                    nitrogen_mg_kg=float(n),
+                    phosphorus_mg_kg=float(p),
+                    potassium_mg_kg=float(k),
+                    ph_level=float(ph)
+                )
+        return values
 
 
 class FactorItem(BaseModel):
