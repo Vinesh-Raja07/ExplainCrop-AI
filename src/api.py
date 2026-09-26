@@ -32,7 +32,7 @@ from src.db import get_db_connection
 from src.security import verify_password, get_password_hash, create_access_token
 import sqlite3
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/v1/auth/login")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/v1/auth/login", auto_error=False)
 
 # Initialize Rate Limiter
 limiter = Limiter(key_func=get_remote_address)
@@ -293,8 +293,9 @@ def get_current_user_or_api_key(token: Optional[str] = Depends(oauth2_scheme), a
             
     raise HTTPException(status_code=401, detail="Not authenticated")
 
-def get_current_user(token: str = Depends(oauth2_scheme)):
-    # Very basic validation just to extract user
+def get_current_user(token: Optional[str] = Depends(oauth2_scheme)):
+    if not token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
     from jose import jwt, JWTError
     from src.security import SECRET_KEY, ALGORITHM
     try:
