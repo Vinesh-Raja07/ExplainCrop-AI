@@ -340,6 +340,30 @@ def delete_user_farm(farm_id: int, user_id: int):
     conn.close()
 
 
+def log_prediction_history(
+    user_id: int,
+    predicted_crop: str,
+    confidence: float,
+    nitrogen: float,
+    phosphorus: float,
+    potassium: float,
+    temperature: float,
+    humidity: float,
+    ph: float,
+    rainfall: float
+) -> int:
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO prediction_history (user_id, predicted_crop, confidence, nitrogen, phosphorus, potassium, temperature, humidity, ph, rainfall)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (user_id, predicted_crop, confidence, nitrogen, phosphorus, potassium, temperature, humidity, ph, rainfall))
+    rec_id = cursor.lastrowid
+    conn.commit()
+    conn.close()
+    return rec_id
+
+
 def create_user_feedback(user_id: int, prediction_id: Optional[int], rating: str, comments: str) -> int:
     conn = get_db_connection()
     cursor = conn.cursor()
