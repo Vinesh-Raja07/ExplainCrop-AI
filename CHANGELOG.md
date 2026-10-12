@@ -1,5 +1,54 @@
 # ExplainCrop-AI / CropMind AI - Comprehensive Changelog
 
+## 🚀 Version 2.5.0 - Spatial Farm Boundaries, Drip Fertigation & Agronomic Knowledge Engine
+
+### 🌟 New Agronomic Microservices & AI Modules
+1. **Multi-Season Crop Rotation & Biological N-Replenishment Engine (`src/crop_rotation.py`)**:
+   - Computes optimal 3-season crop rotation plans (Kharif - Rabi - Zaid) based on primary anchor crops.
+   - Models biological nitrogen replenishment credits (+15 to +35 kg N/acre) from legume and green manure cover crops.
+   - Evaluates companion planting synergies and intercropping pest suppression matrices.
+   - REST API Endpoint: `POST /api/v1/advisory/crop-rotation`.
+
+2. **Extreme Weather & Climate Anomaly Early Warning Shield (`src/climate_alerts.py`)**:
+   - Detects extreme meteorological anomalies including frost hazard, heatwave spikes, and drought/waterlogging.
+   - Provides composite thermal and moisture stress index scores.
+   - Issues actionable proactive shields (anti-transpirant sprays, light night irrigation, shade netting).
+   - REST API Endpoint: `POST /api/v1/advisory/climate-alerts`.
+
+3. **Precision Drip Fertigation & WSF Dosing Calculator (`src/fertigation_calculator.py`)**:
+   - Stage-specific water-soluble fertilizer dosing (19-19-19, MAP 12-61-0, KNO3 13-0-45, Calcium Nitrate).
+   - Computes tank dilution quantities (kg/tank) and estimated electrical conductivity (EC dS/m) safety bounds.
+   - REST API Endpoint: `POST /api/v1/advisory/fertigation-schedule`.
+
+4. **Soil Micronutrient Deficit & Foliar Prescription Advisor (`src/micronutrient_advisor.py`)**:
+   - Evaluates secondary and micronutrient deficits (Zinc, Iron, Boron, Sulphur) influenced by soil pH and organic matter.
+   - Generates foliar spray recipes (Zinc Sulphate, Chelated Fe-EDTA, Solubor Borax) with crop-specific sensitivity profiles.
+   - REST API Endpoint: `POST /api/v1/advisory/micronutrients`.
+
+5. **MCDA / TOPSIS Multi-Criteria Decision Ranker (`src/crop_ranking.py`)**:
+   - Technique for Order Preference by Similarity to Ideal Solution (TOPSIS) ranking engine.
+   - Balances ML viability score, net margin, water efficiency, and climate resilience with user-customizable weights.
+   - REST API Endpoint: `POST /api/v1/advisory/mcda-ranking`.
+
+6. **Spatial Farm Parcel Geometry & Acreage Engine (`src/spatial_parcels.py`)**:
+   - Computes geodesic polygon area using spherical excess projection on WGS84 ellipsoid coordinates.
+   - Calculates isoperimetric shape compactness score and generates standard GeoJSON features.
+   - SQLite CRUD database persistence (`farm_parcels` table) and REST endpoints (`POST /api/v1/parcels`, `GET /api/v1/parcels`, `DELETE /api/v1/parcels/{id}`).
+
+7. **ICAR & FAO Agronomic Knowledge Base & Semantic Search (`src/agri_knowledge.py`)**:
+   - Fast keyword and token-similarity search across certified ICAR (Indian Council of Agricultural Research) & FAO packages of practices.
+   - Covers seed treatments, integrated pest management, critical irrigation stages, and safe grain storage.
+   - REST API Endpoints: `GET /api/v1/knowledge/search`, `GET /api/v1/knowledge/categories`.
+
+8. **Multi-Sheet Excel Dossier Exporter (`src/data_exporter.py`)**:
+   - Generates styled multi-sheet `.xlsx` workbooks containing Executive Summary, Nutrient Prescriptions, and Cost-Benefit Projections.
+   - REST API Endpoint: `POST /api/v1/reports/excel`.
+
+9. **Streamlit UI 21-Tab Integration (`app.py`)**:
+   - Seamlessly integrated all 7 new modules and the Excel dossier download into the Streamlit dashboard with localization support.
+
+---
+
 ## 🚀 Version 2.0.0 - Advanced Agronomic Decision Support & Multi-Modal Intelligence
 
 ### 🌟 New Agronomic Microservices & AI Features

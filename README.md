@@ -19,7 +19,14 @@
   - Moisture Availability Index: $MAI = \frac{P_{forecast} - \mu_{hist}}{\sigma_{hist}}$
 - **Ranked Crop Prediction**: Top-3 climate-resilient crop recommendations with calibrated suitability percentages based on XGBoost multi-class probabilities (**98.86% Accuracy, 0.9885 Macro $F_1$**).
 - **TreeSHAP Explainability Dashboard**: Sub-150ms exact local factor attributions into intuitive visual impact bars and natural-language causal narratives.
-- **Interactive Scenario Simulator**: What-If adjustment levers for evaluating synthetic rainfall shifts, heatwaves, and fertilizer amendments.
+- **🔄 Crop Rotation & Companion Planting Planner**: 3-season Kharif-Rabi-Zaid sequence optimizer with biological nitrogen fixation credits and intercropping pest suppression matrices.
+- **⚠️ Extreme Weather & Climate Anomaly Shield**: Real-time frost risk, heatwave spike, and flood inundation early warning with actionable agronomic mitigation protocols.
+- **💧 Precision Drip Fertigation & WSF Calculator**: Stage-specific water-soluble fertilizer dosing (19-19-19, 12-61-0, 0-0-50), tank dilution rates, and electrical conductivity (EC) safety bounds.
+- **🔬 Micronutrient Deficit & Foliar Prescription Advisor**: Diagnoses Zn, Fe, B, and S deficiencies influenced by soil pH and organic matter, with foliar spray formulations.
+- **⚖️ TOPSIS Multi-Criteria Decision Ranker**: Vector-normalized MCDA engine balancing ML viability, gross margin, water conservation, and climate resilience.
+- **🗺️ Farm Spatial Parcel Boundary Engine**: Geodesic spherical excess acreage calculator, isoperimetric shape compactness score, and GeoJSON export.
+- **📚 ICAR & FAO Agronomic Knowledge Base**: Fast semantic and keyword search engine across certified Indian Council of Agricultural Research & FAO packages of practices.
+- **📊 Multi-Sheet Excel Dossier & PDF Exporter**: Instant download of executive summary, fertilizer prescriptions, climate risk, and economic cost-benefit models.
 - **Zero-CSV Architecture**: All 2,200 agricultural samples and 30-year historical climate normals are stored in indexed **SQLite tables** (`data/optic_crop.db`) and **Parquet storage**.
 - **Spatial Geohash Caching**: Level-6 Geohash indexing (~1.2 km^2) with 1-hour TTL and graceful degradation fallback.
 
@@ -153,12 +160,27 @@ CropMind-AI/
 │   └── metadata.json              # Benchmarks and feature importances
 ├── src/
 │   ├── __init__.py
-│   ├── db.py                      # SQLite and Parquet database manager
+│   ├── db.py                      # SQLite & Parquet manager, farm parcels CRUD
 │   ├── model_train.py             # Multi-modal feature engineering and training pipeline
 │   ├── explain_engine.py          # Inference, TreeSHAP attribution and agronomic advisory
 │   ├── weather_service.py         # Open-Meteo live sync and Geohash level-6 caching
+│   ├── fertilizer_advisor.py      # N-P-K nutrient prescription & FAO-56 Penman-Monteith
+│   ├── fertigation_calculator.py  # Drip fertigation, WSF tank dosing and EC limits
+│   ├── micronutrient_advisor.py   # Secondary & micronutrient deficiency diagnosis
+│   ├── crop_rotation.py           # 3-season crop rotation & companion planting engine
+│   ├── climate_alerts.py          # Extreme weather & anomaly detector
+│   ├── crop_ranking.py            # TOPSIS multi-criteria decision ranker
+│   ├── spatial_parcels.py         # Geodesic polygon area & GeoJSON geometry engine
+│   ├── agri_knowledge.py         # ICAR & FAO agronomic search engine
+│   ├── data_exporter.py          # Multi-sheet Excel (.xlsx) dossier generator
+│   ├── disease_risk.py            # Microclimate pathogen & pest forecaster
+│   ├── economics_engine.py        # Ag-economics & mandi gross profit calculator
+│   ├── soil_health.py             # Soil Health Index & IPCC GHG calculator
+│   ├── pdf_generator.py           # FPDF2 branded agronomic advisory PDF generator
+│   ├── translations.py            # Multi-language localization matrix
 │   └── api.py                     # FastAPI production REST microservice
-├── app.py                         # Streamlit Farmer and Agronomist Console
+├── tests/                         # Full Pytest validation suite (53 Unit Tests)
+├── app.py                         # Streamlit Farmer and Agronomist Console (21 Tabs)
 ├── requirements.txt               # Dependencies
 └── README.md                      # Project documentation
 ```

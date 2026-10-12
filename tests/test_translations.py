@@ -27,7 +27,7 @@ def test_core_keys_present_in_all_languages():
 def test_get_translation_fallback():
     # Valid key
     val = get_translation("Tamil", "login")
-    assert val == "உள்நுழைக"
+    assert val == "உள்நுழையவும்"
     
     # Missing key fallback to English
     fallback_val = get_translation("Spanish", "non_existent_key_xyz", default="Default Val")

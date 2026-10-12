@@ -226,6 +226,77 @@ class PdfReportRequest(BaseModel):
     location_name: Optional[str] = Field("Selected Coordinates", json_schema_extra={"example": "Coimbatore, India"})
 
 
+class CropRotationRequest(BaseModel):
+    primary_crop: str = Field(..., json_schema_extra={"example": "Rice"})
+    soil_profile: SoilProfile
+    field_area_acres: Optional[float] = Field(1.0, ge=0.1, le=1000.0, json_schema_extra={"example": 1.0})
+    include_green_manure: Optional[bool] = Field(True, json_schema_extra={"example": True})
+
+
+class ClimateAlertsRequest(BaseModel):
+    crop_name: str = Field(..., json_schema_extra={"example": "Rice"})
+    temperature: float = Field(..., ge=-20.0, le=65.0, json_schema_extra={"example": 39.5})
+    humidity: float = Field(..., ge=0.0, le=100.0, json_schema_extra={"example": 35.0})
+    rainfall_14d_mm: float = Field(..., ge=0.0, le=2000.0, json_schema_extra={"example": 10.0})
+    wind_speed_kmh: Optional[float] = Field(12.0, ge=0.0, json_schema_extra={"example": 12.0})
+
+
+class FertigationScheduleRequest(BaseModel):
+    crop_name: str = Field(..., json_schema_extra={"example": "Banana"})
+    growth_stage: Optional[str] = Field("vegetative", json_schema_extra={"example": "vegetative"})
+    field_area_acres: Optional[float] = Field(1.0, ge=0.1, le=1000.0, json_schema_extra={"example": 1.0})
+    fertigation_frequency_per_week: Optional[int] = Field(2, ge=1, le=7, json_schema_extra={"example": 2})
+    irrigation_volume_litres_cycle: Optional[float] = Field(8000.0, ge=100.0, json_schema_extra={"example": 8000.0})
+
+
+class MicronutrientRequest(BaseModel):
+    crop_name: str = Field(..., json_schema_extra={"example": "Rice"})
+    soil_ph: float = Field(..., ge=2.0, le=12.0, json_schema_extra={"example": 7.8})
+    organic_matter_pct: Optional[float] = Field(0.75, ge=0.1, le=10.0, json_schema_extra={"example": 0.75})
+    soil_zn_ppm: Optional[float] = Field(None, ge=0.0, json_schema_extra={"example": 0.45})
+    soil_fe_ppm: Optional[float] = Field(None, ge=0.0, json_schema_extra={"example": 3.8})
+    soil_b_ppm: Optional[float] = Field(None, ge=0.0, json_schema_extra={"example": 0.40})
+    soil_s_ppm: Optional[float] = Field(None, ge=0.0, json_schema_extra={"example": 8.5})
+
+
+class CandidateCropItem(BaseModel):
+    crop: str = Field(..., json_schema_extra={"example": "Rice"})
+    viability_score: float = Field(..., ge=0.0, le=1.0, json_schema_extra={"example": 0.92})
+
+
+class CropRankingRequest(BaseModel):
+    candidates: List[CandidateCropItem]
+    temperature_c: float = Field(..., ge=-10.0, le=60.0, json_schema_extra={"example": 28.0})
+    humidity_pct: float = Field(..., ge=0.0, le=100.0, json_schema_extra={"example": 70.0})
+    rainfall_mm: float = Field(..., ge=0.0, le=2000.0, json_schema_extra={"example": 100.0})
+    weight_viability: Optional[float] = Field(0.35, ge=0.0, le=1.0, json_schema_extra={"example": 0.35})
+    weight_profit: Optional[float] = Field(0.25, ge=0.0, le=1.0, json_schema_extra={"example": 0.25})
+    weight_water_efficiency: Optional[float] = Field(0.20, ge=0.0, le=1.0, json_schema_extra={"example": 0.20})
+    weight_resilience: Optional[float] = Field(0.20, ge=0.0, le=1.0, json_schema_extra={"example": 0.20})
+    field_area_acres: Optional[float] = Field(1.0, ge=0.1, le=1000.0, json_schema_extra={"example": 1.0})
+
+
+class ParcelCalculateRequest(BaseModel):
+    coordinates: List[List[float]] = Field(..., json_schema_extra={"example": [[11.0168, 76.9558], [11.0180, 76.9558], [11.0180, 76.9575], [11.0168, 76.9575], [11.0168, 76.9558]]})
+
+
+class ParcelCreateRequest(BaseModel):
+    parcel_name: str = Field(..., min_length=1, json_schema_extra={"example": "North Field Block A"})
+    coordinates: List[List[float]] = Field(..., min_length=3, json_schema_extra={"example": [[11.0168, 76.9558], [11.0180, 76.9558], [11.0180, 76.9575], [11.0168, 76.9575], [11.0168, 76.9558]]})
+    primary_crop: Optional[str] = Field("Rice", json_schema_extra={"example": "Rice"})
+    soil_type: Optional[str] = Field("Clay Loam", json_schema_extra={"example": "Clay Loam"})
+
+
+class ExcelReportRequest(BaseModel):
+    crop_name: str = Field(..., json_schema_extra={"example": "Rice"})
+    viability: float = Field(..., ge=0.0, le=1.0, json_schema_extra={"example": 0.95})
+    soil_profile: SoilProfile
+    temperature: float = Field(..., json_schema_extra={"example": 26.5})
+    humidity: float = Field(..., json_schema_extra={"example": 75.0})
+    rainfall: float = Field(..., json_schema_extra={"example": 110.0})
+    field_area_acres: Optional[float] = Field(1.0, ge=0.1, le=1000.0, json_schema_extra={"example": 1.0})
+
+
 @app.get("/", tags=["Health & Metadata"])
 def root():
     return {
@@ -834,6 +905,259 @@ def download_pdf_report(request: Request, payload: PdfReportRequest, current_use
         media_type="application/pdf",
         headers={"Content-Disposition": f"attachment; filename=CropMind_{payload.crop_name}_Advisory.pdf"}
     )
+
+
+@app.post("/api/v1/advisory/crop-rotation", tags=["Agronomic Advisory"])
+@limiter.limit("60/minute")
+def get_crop_rotation_plan(request: Request, payload: CropRotationRequest, current_user: str = Depends(get_current_user_or_api_key)):
+    from src.crop_rotation import generate_crop_rotation_plan
+    result = generate_crop_rotation_plan(
+        primary_crop=payload.primary_crop,
+        soil_n=payload.soil_profile.nitrogen_mg_kg,
+        soil_p=payload.soil_profile.phosphorus_mg_kg,
+        soil_k=payload.soil_profile.potassium_mg_kg,
+        field_area_acres=payload.field_area_acres or 1.0,
+        include_green_manure=payload.include_green_manure if payload.include_green_manure is not None else True
+    )
+    return {"status": "success", "data": result}
+
+
+@app.post("/api/v1/advisory/climate-alerts", tags=["Agronomic Advisory"])
+@limiter.limit("60/minute")
+def get_climate_alerts(request: Request, payload: ClimateAlertsRequest, current_user: str = Depends(get_current_user_or_api_key)):
+    from src.climate_alerts import evaluate_climate_anomalies
+    result = evaluate_climate_anomalies(
+        crop_name=payload.crop_name,
+        temperature_c=payload.temperature,
+        humidity_pct=payload.humidity,
+        rainfall_14d_mm=payload.rainfall_14d_mm,
+        wind_speed_kmh=payload.wind_speed_kmh or 12.0
+    )
+    return {"status": "success", "data": result}
+
+
+@app.post("/api/v1/advisory/fertigation-schedule", tags=["Agronomic Advisory"])
+@limiter.limit("60/minute")
+def get_fertigation_schedule(request: Request, payload: FertigationScheduleRequest, current_user: str = Depends(get_current_user_or_api_key)):
+    from src.fertigation_calculator import calculate_fertigation_schedule
+    result = calculate_fertigation_schedule(
+        crop_name=payload.crop_name,
+        growth_stage=payload.growth_stage or "vegetative",
+        field_area_acres=payload.field_area_acres or 1.0,
+        fertigation_frequency_per_week=payload.fertigation_frequency_per_week or 2,
+        irrigation_volume_litres_cycle=payload.irrigation_volume_litres_cycle or 8000.0
+    )
+    return {"status": "success", "data": result}
+
+
+@app.post("/api/v1/advisory/micronutrients", tags=["Agronomic Advisory"])
+@limiter.limit("60/minute")
+def get_micronutrient_advisory(request: Request, payload: MicronutrientRequest, current_user: str = Depends(get_current_user_or_api_key)):
+    from src.micronutrient_advisor import diagnose_micronutrient_deficiencies
+    result = diagnose_micronutrient_deficiencies(
+        crop_name=payload.crop_name,
+        soil_ph=payload.soil_ph,
+        organic_matter_pct=payload.organic_matter_pct or 0.75,
+        soil_zn_ppm=payload.soil_zn_ppm,
+        soil_fe_ppm=payload.soil_fe_ppm,
+        soil_b_ppm=payload.soil_b_ppm,
+        soil_s_ppm=payload.soil_s_ppm
+    )
+    return {"status": "success", "data": result}
+
+
+@app.post("/api/v1/advisory/mcda-ranking", tags=["Agronomic Advisory"])
+@limiter.limit("60/minute")
+def get_mcda_crop_ranking(request: Request, payload: CropRankingRequest, current_user: str = Depends(get_current_user_or_api_key)):
+    from src.crop_ranking import calculate_topsis_crop_ranking
+    candidate_list = [{"crop": c.crop, "viability_score": c.viability_score} for c in payload.candidates]
+    result = calculate_topsis_crop_ranking(
+        candidate_crops_with_scores=candidate_list,
+        temperature_c=payload.temperature_c,
+        humidity_pct=payload.humidity_pct,
+        rainfall_mm=payload.rainfall_mm,
+        weight_viability=payload.weight_viability or 0.35,
+        weight_profit=payload.weight_profit or 0.25,
+        weight_water_efficiency=payload.weight_water_efficiency or 0.20,
+        weight_resilience=payload.weight_resilience or 0.20,
+        field_area_acres=payload.field_area_acres or 1.0
+    )
+    return {"status": "success", "data": result}
+
+
+# --- SPATIAL PARCELS ENDPOINTS ---
+
+@app.post("/api/v1/parcels/calculate-area", tags=["Spatial Farm Parcels"])
+@limiter.limit("60/minute")
+def calculate_parcel_geometry(request: Request, payload: ParcelCalculateRequest, current_user: str = Depends(get_current_user_or_api_key)):
+    from src.spatial_parcels import calculate_polygon_geodesic_area
+    result = calculate_polygon_geodesic_area(payload.coordinates)
+    return {"status": "success", "data": result}
+
+
+@app.post("/api/v1/parcels", tags=["Spatial Farm Parcels"])
+@limiter.limit("30/minute")
+def create_parcel_endpoint(request: Request, payload: ParcelCreateRequest, current_user: str = Depends(get_current_user)):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id FROM users WHERE username = ?", (current_user,))
+    user_row = cursor.fetchone()
+    conn.close()
+    if not user_row:
+        raise HTTPException(status_code=404, detail="User not found")
+        
+    from src.spatial_parcels import calculate_polygon_geodesic_area, polygon_to_geojson
+    from src.db import create_farm_parcel
+    
+    geo_res = calculate_polygon_geodesic_area(payload.coordinates)
+    geojson_str = polygon_to_geojson(payload.coordinates, properties={"name": payload.parcel_name})
+    
+    parcel_id = create_farm_parcel(
+        user_id=user_row["id"],
+        parcel_name=payload.parcel_name,
+        polygon_geojson=geojson_str,
+        area_acres=geo_res["area_acres"],
+        centroid_lat=geo_res["centroid"]["lat"],
+        centroid_lon=geo_res["centroid"]["lon"],
+        primary_crop=payload.primary_crop,
+        soil_type=payload.soil_type or "Clay Loam"
+    )
+    
+    return {
+        "status": "success",
+        "parcel_id": parcel_id,
+        "data": {
+            "parcel_name": payload.parcel_name,
+            "area_acres": geo_res["area_acres"],
+            "area_hectares": geo_res["area_hectares"],
+            "area_sq_meters": geo_res["area_sq_meters"],
+            "perimeter_meters": geo_res["perimeter_meters"],
+            "centroid": geo_res["centroid"],
+            "primary_crop": payload.primary_crop,
+            "soil_type": payload.soil_type
+        }
+    }
+
+
+@app.get("/api/v1/parcels", tags=["Spatial Farm Parcels"])
+@limiter.limit("60/minute")
+def list_parcels_endpoint(request: Request, current_user: str = Depends(get_current_user)):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id FROM users WHERE username = ?", (current_user,))
+    user_row = cursor.fetchone()
+    conn.close()
+    if not user_row:
+        raise HTTPException(status_code=404, detail="User not found")
+        
+    from src.db import get_user_farm_parcels
+    parcels = get_user_farm_parcels(user_id=user_row["id"])
+    return {"status": "success", "data": parcels}
+
+
+@app.delete("/api/v1/parcels/{parcel_id}", tags=["Spatial Farm Parcels"])
+@limiter.limit("20/minute")
+def delete_parcel_endpoint(request: Request, parcel_id: int, current_user: str = Depends(get_current_user)):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id FROM users WHERE username = ?", (current_user,))
+    user_row = cursor.fetchone()
+    conn.close()
+    if not user_row:
+        raise HTTPException(status_code=404, detail="User not found")
+        
+    from src.db import delete_farm_parcel
+    deleted = delete_farm_parcel(parcel_id=parcel_id, user_id=user_row["id"])
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Parcel not found or unauthorized")
+    return {"status": "success", "message": f"Parcel {parcel_id} deleted successfully"}
+
+
+# --- AGRONOMIC KNOWLEDGE BASE ENDPOINTS ---
+
+@app.get("/api/v1/knowledge/search", tags=["Agronomic Knowledge"])
+@limiter.limit("60/minute")
+def search_knowledge_endpoint(
+    request: Request,
+    query: Optional[str] = Query(None, description="Search keyword, problem, or pest"),
+    crop: Optional[str] = Query(None, description="Specific crop filter"),
+    category: Optional[str] = Query(None, description="Specific topic category"),
+    limit: Optional[int] = Query(5, ge=1, le=20, description="Max results to return")
+):
+    from src.agri_knowledge import search_agronomic_knowledge
+    result = search_agronomic_knowledge(
+        query=query or "",
+        crop=crop,
+        category=category,
+        max_results=limit or 5
+    )
+    return result
+
+
+@app.get("/api/v1/knowledge/categories", tags=["Agronomic Knowledge"])
+@limiter.limit("60/minute")
+def get_knowledge_categories_endpoint(request: Request):
+    from src.agri_knowledge import get_all_categories
+    categories = get_all_categories()
+    return {"status": "success", "data": categories}
+
+
+# --- REPORT EXPORT ENDPOINTS ---
+
+@app.post("/api/v1/reports/excel", tags=["Agronomic Advisory"])
+@limiter.limit("30/minute")
+def download_excel_dossier(request: Request, payload: ExcelReportRequest, current_user: str = Depends(get_current_user_or_api_key)):
+    from src.data_exporter import generate_excel_crop_dossier
+    from src.fertilizer_advisor import calculate_nutrient_prescription
+    from src.economics_engine import calculate_crop_profitability
+    
+    fert_data = calculate_nutrient_prescription(
+        crop_name=payload.crop_name,
+        soil_n=payload.soil_profile.nitrogen_mg_kg,
+        soil_p=payload.soil_profile.phosphorus_mg_kg,
+        soil_k=payload.soil_profile.potassium_mg_kg,
+        soil_ph=payload.soil_profile.ph_level,
+        field_area_acres=payload.field_area_acres or 1.0
+    )
+    
+    econ_data = calculate_crop_profitability(
+        crop_name=payload.crop_name,
+        viability_score=payload.viability,
+        field_area_acres=payload.field_area_acres or 1.0
+    )
+    
+    excel_bytes = generate_excel_crop_dossier(
+        crop_name=payload.crop_name,
+        viability=payload.viability,
+        soil_profile={
+            "nitrogen": payload.soil_profile.nitrogen_mg_kg,
+            "phosphorus": payload.soil_profile.phosphorus_mg_kg,
+            "potassium": payload.soil_profile.potassium_mg_kg,
+            "ph": payload.soil_profile.ph_level
+        },
+        climate_profile={
+            "temperature": payload.temperature,
+            "humidity": payload.humidity,
+            "rainfall": payload.rainfall
+        },
+        field_area_acres=payload.field_area_acres or 1.0,
+        fertilizer_data=fert_data,
+        economics_data=econ_data
+    )
+    
+    return Response(
+        content=excel_bytes,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename=CropMind_{payload.crop_name}_Dossier.xlsx"}
+    )
+
+
+
+
+
+
+
+
 
 
 

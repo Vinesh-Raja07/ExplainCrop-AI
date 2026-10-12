@@ -22,8 +22,6 @@ import requests
 
 from src.explain_engine import predict_and_explain, get_engine
 from src.weather_service import fetch_weather_stream, geocode_location
-from src.db import load_dataset_from_db
-from src.pdf_generator import generate_crop_report
 from src.translations import TRANSLATIONS, get_translation
 from src.fertilizer_advisor import calculate_nutrient_prescription
 from src.irrigation_scheduler import calculate_irrigation_schedule
@@ -31,8 +29,44 @@ from src.disease_risk import calculate_disease_pest_risk
 from src.economics_engine import calculate_crop_profitability
 from src.soil_health import calculate_soil_health_and_carbon
 from src.multimodal_processor import get_multimodal_processor
+from src.crop_rotation import generate_crop_rotation_plan
+from src.climate_alerts import evaluate_climate_anomalies
+from src.fertigation_calculator import calculate_fertigation_schedule
+from src.micronutrient_advisor import diagnose_micronutrient_deficiencies
+from src.crop_ranking import calculate_topsis_crop_ranking
+from src.spatial_parcels import calculate_polygon_geodesic_area, analyze_farm_parcel
+from src.agri_knowledge import search_agronomic_knowledge, get_all_categories
+from src.data_exporter import generate_excel_crop_dossier
+from src.pdf_generator import generate_crop_report
+from src.db import (
+    init_database,
+    get_db_connection,
+    load_dataset_from_db,
+    create_user_farm,
+    get_user_farms,
+    delete_user_farm,
+    create_api_key,
+    get_user_api_keys,
+    delete_api_key,
+    get_admin_metrics,
+    create_farm_parcel,
+    get_user_farm_parcels,
+    delete_farm_parcel,
+    log_prediction_history,
+)
+from src.security import (
+    verify_password,
+    get_password_hash,
+    create_access_token,
+)
 
-API_URL = "http://localhost:8000/api/v1"
+# Ensure database schema is initialized
+try:
+    init_database()
+except Exception:
+    pass
+
+API_URL = os.getenv("CROPMIND_API_URL", "http://localhost:8000/api/v1")
 
 # Configure Streamlit Page
 st.set_page_config(
@@ -267,6 +301,18 @@ st.markdown(
 )
 
 
+def get_user_id_by_username(username: str) -> Optional[int]:
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT id FROM users WHERE username = ?", (username,))
+        row = cursor.fetchone()
+        conn.close()
+        return row["id"] if row else None
+    except Exception:
+        return None
+
+
 def login_form():
     st.subheader(get_translation(lang, "login"))
     with st.form("login_form"):
@@ -274,16 +320,41 @@ def login_form():
         password = st.text_input(get_translation(lang, "password"), type="password")
         submitted = st.form_submit_button(get_translation(lang, "login"))
         if submitted:
+            if not username or not password:
+                st.warning("Please enter both username and password.")
+                return
+            token = None
+            err_msg = None
+            # 1. Try FastAPI REST endpoint if running
             try:
-                res = requests.post(f"{API_URL}/auth/login", data={"username": username, "password": password})
+                res = requests.post(f"{API_URL}/auth/login", data={"username": username, "password": password}, timeout=0.8)
                 if res.status_code == 200:
-                    st.session_state["token"] = res.json()["access_token"]
-                    st.session_state["username"] = username
-                    st.rerun()
+                    token = res.json().get("access_token")
                 else:
-                    st.error("Invalid credentials")
-            except Exception as e:
-                st.error(f"Login connection failed: {e}")
+                    err_msg = "Invalid username or password."
+            except Exception:
+                # 2. Embedded direct SQLite authentication fallback (Streamlit Cloud mode)
+                try:
+                    init_database()
+                    conn = get_db_connection()
+                    cursor = conn.cursor()
+                    cursor.execute("SELECT hashed_password FROM users WHERE username = ?", (username,))
+                    row = cursor.fetchone()
+                    conn.close()
+                    if row and verify_password(password, row["hashed_password"]):
+                        token = create_access_token(data={"sub": username})
+                    else:
+                        err_msg = "Invalid username or password."
+                except Exception as db_err:
+                    err_msg = f"Authentication error: {db_err}"
+
+            if token:
+                st.session_state["token"] = token
+                st.session_state["username"] = username
+                st.success("Login successful!")
+                st.rerun()
+            else:
+                st.error(err_msg or "Invalid credentials")
 
 
 def register_form():
@@ -293,16 +364,47 @@ def register_form():
         password = st.text_input(get_translation(lang, "password"), type="password")
         submitted = st.form_submit_button(get_translation(lang, "register"))
         if submitted:
+            if not username or not password:
+                st.warning("Please enter both username and password.")
+                return
+            token = None
+            err_msg = None
+            # 1. Try FastAPI REST endpoint if running
             try:
-                res = requests.post(f"{API_URL}/auth/register", json={"username": username, "password": password})
+                res = requests.post(f"{API_URL}/auth/register", json={"username": username, "password": password}, timeout=0.8)
                 if res.status_code == 200:
-                    st.session_state["token"] = res.json()["access_token"]
-                    st.session_state["username"] = username
-                    st.rerun()
+                    token = res.json().get("access_token")
                 else:
-                    st.error("Registration failed. Username may exist.")
-            except Exception as e:
-                st.error(f"Registration connection failed: {e}")
+                    err_msg = "Registration failed. Username may already exist."
+            except Exception:
+                # 2. Embedded direct SQLite registration fallback (Streamlit Cloud mode)
+                try:
+                    import sqlite3
+                    init_database()
+                    conn = get_db_connection()
+                    cursor = conn.cursor()
+                    hashed_pwd = get_password_hash(password)
+                    try:
+                        cursor.execute(
+                            "INSERT INTO users (username, hashed_password, role) VALUES (?, ?, ?)",
+                            (username, hashed_pwd, "Farmer")
+                        )
+                        conn.commit()
+                        conn.close()
+                        token = create_access_token(data={"sub": username})
+                    except sqlite3.IntegrityError:
+                        conn.close()
+                        err_msg = "Username already exists. Please choose a different username or log in."
+                except Exception as db_err:
+                    err_msg = f"Registration error: {db_err}"
+
+            if token:
+                st.session_state["token"] = token
+                st.session_state["username"] = username
+                st.success("Account registered successfully!")
+                st.rerun()
+            else:
+                st.error(err_msg or "Registration failed.")
 
 
 if st.session_state["token"] is None:
@@ -406,9 +508,16 @@ with st.sidebar:
 (
     tab_rec,
     tab_fertilizer,
+    tab_fertigation,
+    tab_micronutrients,
+    tab_rotation,
+    tab_climate_alerts,
+    tab_mcda,
     tab_disease,
     tab_economics,
     tab_soil,
+    tab_parcels,
+    tab_knowledge,
     tab_whatif,
     tab_analytics,
     tab_db,
@@ -422,9 +531,16 @@ with st.sidebar:
     [
         get_translation(lang, "recommendations"),
         get_translation(lang, "fertilizer_advisor"),
+        get_translation(lang, "fertigation_calc"),
+        get_translation(lang, "micronutrients"),
+        get_translation(lang, "crop_rotation"),
+        get_translation(lang, "climate_alerts"),
+        get_translation(lang, "mcda_ranker"),
         get_translation(lang, "disease_risk"),
         get_translation(lang, "economics"),
         get_translation(lang, "soil_health"),
+        get_translation(lang, "parcel_mgr"),
+        get_translation(lang, "agri_knowledge"),
         get_translation(lang, "simulation"),
         get_translation(lang, "model_validation"),
         get_translation(lang, "database_records"),
@@ -617,9 +733,9 @@ with tab_rec:
             )
             st.plotly_chart(fig_radar, use_container_width=True)
 
-    # PDF Download Button
+    # Report Downloads (PDF + Excel)
     st.markdown("---")
-    col_pdf1, col_pdf2 = st.columns([1, 2])
+    col_pdf1, col_pdf2 = st.columns([1, 1])
     with col_pdf1:
         pdf_bytes = generate_crop_report(
             crop_name=top_rec["crop"],
@@ -641,6 +757,21 @@ with tab_rec:
             data=pdf_bytes,
             file_name=f"CropMind_{top_rec['crop']}_Advisory_Report.pdf",
             mime="application/pdf",
+            use_container_width=True,
+        )
+    with col_pdf2:
+        excel_bytes = generate_excel_crop_dossier(
+            crop_name=top_rec["crop"],
+            viability=top_rec["viability_score"],
+            soil_profile={"nitrogen": n_val, "phosphorus": p_val, "potassium": k_val, "ph": ph_val},
+            climate_profile={"temperature": temp_val, "humidity": hum_val, "rainfall": rain_val},
+            field_area_acres=1.0
+        )
+        st.download_button(
+            label="📊 " + get_translation(lang, "download_excel"),
+            data=excel_bytes,
+            file_name=f"CropMind_{top_rec['crop']}_Dossier.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             use_container_width=True,
         )
 
@@ -716,6 +847,282 @@ with tab_fertilizer:
         st.metric("System Runtime", f"~{irr_res['recommended_runtime_hours']} Hours/day")
 
     st.info(f"💧 **Watering Guidance**: {irr_res['actionable_advisory']}")
+
+
+# ==============================================================================
+# TAB: DRIP FERTIGATION & WSF CALCULATOR
+# ==============================================================================
+with tab_fertigation:
+    st.markdown("### 💧 Precision Drip Fertigation & Water-Soluble Fertilizer (WSF) Calculator")
+    st.write("Calculates stage-specific fertigation dosing, tank dilutions, and electrical conductivity (EC) to avoid root salinity stress.")
+
+    fc_col1, fc_col2 = st.columns([1, 1])
+    with fc_col1:
+        fert_crop = st.selectbox(
+            "Select Crop for Fertigation:",
+            sorted(list(load_dataset_from_db()["crop"].unique())),
+            index=sorted(list(load_dataset_from_db()["crop"].unique())).index(top_rec["crop"]) if top_rec["crop"] in load_dataset_from_db()["crop"].unique() else 0,
+            key="fertigation_crop_select"
+        )
+        stage = st.selectbox(
+            "Growth Stage:",
+            ["initial", "vegetative", "flowering", "fruit_maturity"],
+            index=1,
+            format_func=lambda s: s.replace("_", " ").title()
+        )
+        fert_acres = st.number_input("Field Area (Acres)", value=1.0, min_value=0.1, max_value=200.0, step=0.5, key="fert_acres")
+        freq = st.slider("Fertigation Applications Per Week", 1, 7, 2)
+        tank_vol = st.number_input("Irrigation Cycle Volume (Litres)", value=8000.0, min_value=500.0, step=500.0)
+
+    fert_sched = calculate_fertigation_schedule(
+        crop_name=fert_crop,
+        growth_stage=stage,
+        field_area_acres=fert_acres,
+        fertigation_frequency_per_week=freq,
+        irrigation_volume_litres_cycle=tank_vol
+    )
+
+    with fc_col2:
+        m_c1, m_c2 = st.columns(2)
+        with m_c1:
+            st.metric("Total Weekly Dose", f"{fert_sched['weekly_prescription']['total_wsf_kg_week']} kg/wk")
+            st.metric("Estimated Solution EC", f"{fert_sched['safety_parameters']['estimated_ec_ds_m']} dS/m")
+        with m_c2:
+            st.metric("Dosing Per Drip Cycle", f"{fert_sched['cycle_dosing']['wsf_kg_per_cycle']} kg/cycle")
+            st.metric("Salinity Safety Status", fert_sched['safety_parameters']['salinity_risk_status'])
+
+    st.markdown("---")
+    st.markdown("#### Prescribed Water-Soluble Formulations")
+    wsf_df = pd.DataFrame(fert_sched["weekly_prescription"]["recommended_wsf_sources"])
+    if not wsf_df.empty:
+        wsf_df["kg_per_cycle"] = (wsf_df["kg_per_acre_week"] * fert_acres / freq).round(2)
+        st.dataframe(wsf_df, use_container_width=True)
+
+    st.info(f"💡 **Operational Guideline**: {fert_sched['operational_notes']}")
+
+
+# ==============================================================================
+# TAB: MICRONUTRIENT & SECONDARY DEFICITS
+# ==============================================================================
+with tab_micronutrients:
+    st.markdown("### 🔬 Soil Micronutrient Deficit & Foliar Prescription Advisor")
+    st.write("Identifies sub-clinical micronutrient deficiencies (Zn, Fe, B, S) based on soil pH, organic carbon, and crop-specific sensitivity.")
+
+    micro_col1, micro_col2 = st.columns([1, 1])
+    with micro_col1:
+        micro_crop = st.selectbox(
+            "Target Crop:",
+            sorted(list(load_dataset_from_db()["crop"].unique())),
+            index=sorted(list(load_dataset_from_db()["crop"].unique())).index(top_rec["crop"]) if top_rec["crop"] in load_dataset_from_db()["crop"].unique() else 0,
+            key="micro_crop_select"
+        )
+        soil_ph_micro = st.slider("Soil pH Level", 4.0, 9.5, ph_val, 0.1, key="micro_ph")
+        om_micro = st.slider("Soil Organic Matter (%)", 0.1, 5.0, 0.75, 0.05, key="micro_om")
+
+    with micro_col2:
+        st.markdown("##### Optional Soil Test Lab Results (ppm / mg/kg)")
+        zn_ppm = st.number_input("Zinc (Zn) [ppm, Deficit < 0.6]", value=0.45, step=0.05)
+        fe_ppm = st.number_input("Iron (Fe) [ppm, Deficit < 4.5]", value=3.8, step=0.1)
+        b_ppm = st.number_input("Boron (B) [ppm, Deficit < 0.5]", value=0.40, step=0.05)
+        s_ppm = st.number_input("Sulphur (S) [ppm, Deficit < 10.0]", value=8.5, step=0.5)
+
+    micro_res = diagnose_micronutrient_deficiencies(
+        crop_name=micro_crop,
+        soil_ph=soil_ph_micro,
+        organic_matter_pct=om_micro,
+        soil_zn_ppm=zn_ppm,
+        soil_fe_ppm=fe_ppm,
+        soil_b_ppm=b_ppm,
+        soil_s_ppm=s_ppm
+    )
+
+    st.markdown("---")
+    st.markdown(
+        f"""
+        <div class="stitch-card-highlight">
+            <span class="stitch-pill {'pill-error' if micro_res['overall_deficiency_risk'] == 'High' else 'pill-warning' if micro_res['overall_deficiency_risk'] == 'Moderate' else 'pill-optimal'}">
+                {micro_res['overall_deficiency_risk']} Micronutrient Stress
+            </span>
+            <div style="font-size: 0.9rem; color: #DAE2FD; margin-top: 8px;">
+                Crop Sensitivity: <strong>{micro_res['crop_sensitivity_profile']['high_sensitivity_nutrients']}</strong>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+    st.markdown("#### Diagnostic Deficit Summary")
+    def_items = []
+    for nut, data in micro_res["deficiencies_detected"].items():
+        def_items.append({
+            "Nutrient": nut.upper(),
+            "Deficit Severity": data.get("status"),
+            "Critical Benchmark": data.get("critical_threshold_ppm", "pH Induced"),
+            "Observed / Est. Level": data.get("observed_ppm", "pH Availability Gap"),
+            "Impact On Crop": data.get("impact")
+        })
+    st.dataframe(pd.DataFrame(def_items), use_container_width=True)
+
+    if micro_res.get("recommended_prescriptions"):
+        st.markdown("#### Prescribed Corrective Sprays & Soil Amendments")
+        rx_df = pd.DataFrame(micro_res["recommended_prescriptions"])
+        st.dataframe(rx_df, use_container_width=True)
+
+
+# ==============================================================================
+# TAB: CROP ROTATION & COMPANION PLANNER
+# ==============================================================================
+with tab_rotation:
+    st.markdown("### 🔄 Multi-Season Crop Rotation & Companion Synergies")
+    st.write("Generates optimal 3-season crop sequences (Kharif - Rabi - Zaid) to break pest life cycles, replenish biological soil nitrogen, and maximize land use efficiency.")
+
+    rot_c1, rot_c2 = st.columns([1, 1])
+    with rot_c1:
+        base_crop = st.selectbox(
+            "Primary Anchor Crop:",
+            sorted(list(load_dataset_from_db()["crop"].unique())),
+            index=sorted(list(load_dataset_from_db()["crop"].unique())).index(top_rec["crop"]) if top_rec["crop"] in load_dataset_from_db()["crop"].unique() else 0,
+            key="rot_base_crop"
+        )
+        include_gm = st.checkbox("Include Green Manure / Summer Cover Crop", value=True)
+
+    with rot_c2:
+        rot_acres = st.number_input("Field Acreage for Sequence", value=1.0, min_value=0.1, max_value=500.0, step=0.5, key="rot_acres")
+
+    rot_plan = generate_crop_rotation_plan(
+        primary_crop=base_crop,
+        soil_n=n_val,
+        soil_p=p_val,
+        soil_k=k_val,
+        field_area_acres=rot_acres,
+        include_green_manure=include_gm
+    )
+
+    st.markdown("---")
+    st.markdown("#### Recommended 3-Season Sequence")
+    seq_cols = st.columns(3)
+    for idx, (col, step) in enumerate(zip(seq_cols, rot_plan["rotation_sequence"])):
+        with col:
+            st.markdown(
+                f"""
+                <div class="stitch-card-primary" style="min-height: 180px;">
+                    <div style="font-size: 0.75rem; color: #94A3B8; text-transform: uppercase;">Phase {step['phase']} - {step['season']}</div>
+                    <div style="font-size: 1.25rem; font-weight: 700; color: #FFFFFF; margin: 4px 0;">{step['crop']}</div>
+                    <div style="font-size: 0.8rem; color: #38BDF8;">{step['role']}</div>
+                    <div style="font-size: 0.78rem; color: #94A3B8; margin-top: 8px;">{step['agronomic_rationale']}</div>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+
+    st.markdown("---")
+    st.markdown("#### Companion Planting & Intercropping Synergies")
+    st.markdown(f"**Recommended Intercrop for {base_crop}**: {rot_plan['companion_synergies']['recommended_companion']}")
+    st.write(rot_plan['companion_synergies']['mechanism'])
+    st.success(f"🌱 **Biological N Contribution**: {rot_plan['soil_fertility_impact']['estimated_n_fixation_kg_acre']} kg N/acre added biologically.")
+
+
+# ==============================================================================
+# TAB: CLIMATE ALERTS & ANOMALY SHIELD
+# ==============================================================================
+with tab_climate_alerts:
+    st.markdown("### ⚠️ Extreme Weather & Climate Anomaly Early Warning")
+    st.write("Identifies sudden heat spikes, frost risks, drought intensity, and excessive moisture anomalies tailored to crop phenology.")
+
+    ca_c1, ca_c2 = st.columns([1, 1])
+    with ca_c1:
+        ca_crop = st.selectbox(
+            "Evaluate Climate Threat for:",
+            sorted(list(load_dataset_from_db()["crop"].unique())),
+            index=sorted(list(load_dataset_from_db()["crop"].unique())).index(top_rec["crop"]) if top_rec["crop"] in load_dataset_from_db()["crop"].unique() else 0,
+            key="climate_alert_crop"
+        )
+        ca_wind = st.slider("Surface Wind Speed (km/h)", 0.0, 80.0, 15.0, 1.0)
+
+    alerts_res = evaluate_climate_anomalies(
+        crop_name=ca_crop,
+        temperature_c=temp_val,
+        humidity_pct=hum_val,
+        rainfall_14d_mm=rain_val,
+        wind_speed_kmh=ca_wind
+    )
+
+    with ca_c2:
+        st.markdown("#### Climate Stress Index")
+        st.metric("Thermal Stress Score", f"{alerts_res['stress_scores']['thermal_stress_score']}/100")
+        st.metric("Moisture Stress Score", f"{alerts_res['stress_scores']['moisture_stress_score']}/100")
+
+    st.markdown("---")
+    st.markdown(f"#### Active Risk Level: `{alerts_res['composite_risk_level']}`")
+    for alert in alerts_res["active_alerts"]:
+        sev = alert.get("severity", "Moderate")
+        color = "pill-error" if sev == "Critical" else "pill-warning"
+        st.markdown(
+            f"""
+            <div class="stitch-card-primary" style="border-left: 4px solid {'#EF4444' if sev == 'Critical' else '#F59E0B'};">
+                <span class="stitch-pill {color}">{alert['type']} [{sev}]</span>
+                <div style="font-size: 0.95rem; font-weight: 600; color: #FFFFFF; margin-top: 6px;">{alert['message']}</div>
+                <div style="font-size: 0.85rem; color: #38BDF8; margin-top: 6px;"><strong>Actionable Shield:</strong> {alert['mitigation']}</div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
+
+# ==============================================================================
+# TAB: TOPSIS MULTI-CRITERIA DECISION RANKING
+# ==============================================================================
+with tab_mcda:
+    st.markdown("### ⚖️ Multi-Criteria Decision Analysis (TOPSIS) Crop Ranker")
+    st.write("Balances multiple competing objectives: ML Viability Score, Net Mandi Profit, Water Conservation Efficiency, and Climate Stress Resilience.")
+
+    mcda_c1, mcda_c2 = st.columns([1, 1])
+    with mcda_c1:
+        st.markdown("#### Objective Weightings")
+        w_viab = st.slider("Weight: Agronomic Viability", 0.0, 1.0, 0.35, 0.05)
+        w_prof = st.slider("Weight: Projected Profitability", 0.0, 1.0, 0.25, 0.05)
+        w_wat = st.slider("Weight: Water Use Efficiency", 0.0, 1.0, 0.20, 0.05)
+        w_res = st.slider("Weight: Climate Resilience", 0.0, 1.0, 0.20, 0.05)
+
+    candidates = [{"crop": r["crop"], "viability_score": r["viability_score"]} for r in recs]
+    topsis_res = calculate_topsis_crop_ranking(
+        candidate_crops_with_scores=candidates,
+        temperature_c=temp_val,
+        humidity_pct=hum_val,
+        rainfall_mm=rain_val,
+        weight_viability=w_viab,
+        weight_profit=w_prof,
+        weight_water_efficiency=w_wat,
+        weight_resilience=w_res,
+        field_area_acres=1.0
+    )
+
+    with mcda_c2:
+        st.markdown("#### TOPSIS Ranking Leaderboard")
+        rank_df = pd.DataFrame(topsis_res["ranked_crops"])
+        if not rank_df.empty:
+            fig_rank = px.bar(
+                rank_df,
+                x="topsis_score",
+                y="crop",
+                orientation="h",
+                color="topsis_score",
+                color_continuous_scale="Viridis",
+                title="MCDA Closeness Coefficient (Higher = Better)",
+                labels={"topsis_score": "TOPSIS Score", "crop": "Candidate Crop"}
+            )
+            fig_rank.update_layout(
+                template="plotly_dark",
+                paper_bgcolor="#171F33",
+                plot_bgcolor="#0B1326",
+                font=dict(family="Inter", color="#DAE2FD"),
+                height=320,
+                margin=dict(l=20, r=20, t=40, b=20),
+                yaxis=dict(autorange="reversed")
+            )
+            st.plotly_chart(fig_rank, use_container_width=True)
+
+    st.dataframe(rank_df, use_container_width=True)
 
 
 # ==============================================================================
@@ -846,6 +1253,85 @@ with tab_soil:
     st.markdown("#### 🌿 Regenerative Agriculture & Carbon Sequestration Checklist")
     for r in soil_res["regenerative_advisory"]:
         st.markdown(f"- **{r['practice']}**: {r['impact']}")
+
+
+# ==============================================================================
+# TAB: FARM PARCEL BOUNDARIES & ACREAGE
+# ==============================================================================
+with tab_parcels:
+    st.markdown("### 🗺️ Farm Spatial Parcel Boundaries & GPS Acreage Calculator")
+    st.write("Calculates geodesic parcel acreage from GPS boundary polygon coordinates and provides workability shape compactness scores.")
+
+    p_col1, p_col2 = st.columns([1, 1])
+    with p_col1:
+        parcel_name_input = st.text_input("Parcel Identifier / Name", value="Block A - North Field")
+        preset = st.selectbox(
+            "Boundary Preset / Geometry Template:",
+            ["Coimbatore Paddy Field (~2.5 Acres)", "Punjab Wheat Rectangular Strip (~5.0 Acres)", "Guntur Cotton Polygon (~3.8 Acres)"]
+        )
+        if "Coimbatore" in preset:
+            coords = [[11.0000, 76.9500], [11.0010, 76.9500], [11.0010, 76.9510], [11.0000, 76.9510], [11.0000, 76.9500]]
+        elif "Punjab" in preset:
+            coords = [[30.9000, 75.8500], [30.9020, 75.8500], [30.9020, 75.8510], [30.9000, 75.8510], [30.9000, 75.8500]]
+        else:
+            coords = [[16.3000, 80.4400], [16.3015, 80.4400], [16.3015, 80.4418], [16.3000, 80.4418], [16.3000, 80.4400]]
+
+        p_soil = st.selectbox("Parcel Soil Texture", ["Clay Loam", "Sandy Loam", "Black Soil", "Red Laterite"])
+        p_crop = st.selectbox("Primary Sown Crop", sorted(list(load_dataset_from_db()["crop"].unique())), index=0, key="parcel_crop_select")
+
+    geo_info = analyze_farm_parcel(
+        parcel_name=parcel_name_input,
+        boundary_coordinates=coords,
+        soil_type=p_soil,
+        primary_crop=p_crop
+    )
+
+    with p_col2:
+        st.markdown("#### Geodesic Spatial Metrics")
+        pm1, pm2, pm3 = st.columns(3)
+        pm1.metric("Field Acreage", f"{geo_info['geometry']['area_acres']} Acres")
+        pm2.metric("Hectares", f"{geo_info['geometry']['area_hectares']} Ha")
+        pm3.metric("Perimeter", f"{geo_info['geometry']['perimeter_meters']} m")
+        st.metric("Shape Workability", geo_info['geometry']['field_shape_classification'])
+
+    st.markdown("---")
+    st.markdown("#### Boundary GPS Coordinates")
+    st.dataframe(pd.DataFrame(geo_info["boundary_coordinates"]), use_container_width=True)
+
+
+# ==============================================================================
+# TAB: ICAR & FAO AGRONOMIC KNOWLEDGE BASE
+# ==============================================================================
+with tab_knowledge:
+    st.markdown("### 📚 ICAR & FAO Agronomic Knowledge Compendium")
+    st.write("Search verified agronomic Package of Practices (POP), IPM biological recipes, and irrigation scheduling guides certified by ICAR & FAO.")
+
+    kb_q = st.text_input("Search Agronomic Knowledge (e.g., 'seed treatment', 'bollworm', 'wheat irrigation')", "")
+    
+    kb_col1, kb_col2 = st.columns([1, 1])
+    with kb_col1:
+        kb_crop = st.selectbox("Filter by Crop:", ["All Crops"] + sorted(list(load_dataset_from_db()["crop"].unique())))
+    with kb_col2:
+        kb_cat = st.selectbox("Filter by Category:", ["All Categories"] + get_all_categories())
+
+    crop_filter = None if kb_crop == "All Crops" else kb_crop
+    cat_filter = None if kb_cat == "All Categories" else kb_cat
+
+    kb_results = search_agronomic_knowledge(
+        query=kb_q,
+        crop=crop_filter,
+        category=cat_filter,
+        max_results=5
+    )
+
+    st.markdown(f"**Found {kb_results['total_matches']} Expert Guidelines**")
+    for item in kb_results["results"]:
+        with st.expander(f"📖 {item['title']} [{item['crop']} - {item['category']}]", expanded=True):
+            st.markdown(f"**Summary**: {item['summary']}")
+            st.markdown("**Package of Practices Protocol:**")
+            for step in item["protocol"]:
+                st.markdown(f"- {step}")
+            st.caption(f"Source: {item['source']}")
 
 
 # ==============================================================================
@@ -1222,19 +1708,37 @@ with tab_multimodal:
 # ==============================================================================
 with tab_history:
     st.markdown("### Prediction History")
-    headers = {"Authorization": f"Bearer {st.session_state['token']}"}
+    history_data = []
+    # 1. Try FastAPI endpoint if running
     try:
-        res = requests.get(f"{API_URL}/recommendations/history", headers=headers)
+        headers = {"Authorization": f"Bearer {st.session_state.get('token', '')}"}
+        res = requests.get(f"{API_URL}/recommendations/history", headers=headers, timeout=0.8)
         if res.status_code == 200:
             history_data = res.json().get("data", [])
-            if len(history_data) > 0:
-                st.dataframe(pd.DataFrame(history_data).drop(columns=["id", "user_id"], errors="ignore"), use_container_width=True)
-            else:
-                st.info("No prediction history found.")
-        else:
-            st.error("Could not fetch history.")
-    except Exception as e:
-        st.error(f"API Error: {e}")
+    except Exception:
+        pass
+
+    # 2. Direct SQLite DB fallback
+    if not history_data:
+        try:
+            uid = get_user_id_by_username(st.session_state.get("username", ""))
+            if uid:
+                conn = get_db_connection()
+                cursor = conn.cursor()
+                cursor.execute(
+                    "SELECT predicted_crop, confidence, nitrogen, phosphorus, potassium, temperature, humidity, ph, rainfall, created_at FROM prediction_history WHERE user_id = ? ORDER BY created_at DESC",
+                    (uid,)
+                )
+                rows = cursor.fetchall()
+                history_data = [dict(r) for r in rows]
+                conn.close()
+        except Exception as e:
+            st.error(f"Database query error: {e}")
+
+    if len(history_data) > 0:
+        st.dataframe(pd.DataFrame(history_data), use_container_width=True)
+    else:
+        st.info("No prediction history found. Run a recommendation in Tab 1 and click 'Save to History'!")
 
 
 # ==============================================================================
@@ -1242,21 +1746,50 @@ with tab_history:
 # ==============================================================================
 with tab_batch:
     st.header("Bulk Crop Prediction (CSV Upload)")
-    uploaded_file = st.file_uploader("Choose a CSV file", type="csv", key="batch_upload")
+    uploaded_file = st.file_uploader("Choose a CSV file (with N, P, K, Temperature, Humidity, pH, Rainfall)", type="csv", key="batch_upload")
     if uploaded_file is not None:
         if st.button("Run Batch Prediction"):
-            headers = {"Authorization": f"Bearer {st.session_state['token']}"}
-            files = {"file": (uploaded_file.name, uploaded_file.getvalue(), "text/csv")}
+            batch_data = []
+            # 1. Try FastAPI endpoint if running
             try:
-                res = requests.post(f"{API_URL}/recommendations/predict/batch", headers=headers, files=files)
+                headers = {"Authorization": f"Bearer {st.session_state.get('token', '')}"}
+                files = {"file": (uploaded_file.name, uploaded_file.getvalue(), "text/csv")}
+                res = requests.post(f"{API_URL}/recommendations/predict/batch", headers=headers, files=files, timeout=2.0)
                 if res.status_code == 200:
                     batch_data = res.json()["data"]
-                    st.success(f"Successfully processed {len(batch_data)} rows!")
-                    st.dataframe(pd.DataFrame(batch_data), use_container_width=True)
-                else:
-                    st.error(f"Error: {res.text}")
-            except Exception as e:
-                st.error(f"Failed to connect to backend: {e}")
+            except Exception:
+                pass
+
+            # 2. Embedded ML model inference fallback
+            if not batch_data:
+                try:
+                    uploaded_file.seek(0)
+                    df_batch = pd.read_csv(uploaded_file)
+                    col_map = {c: c.lower().strip() for c in df_batch.columns}
+                    df_batch = df_batch.rename(columns=col_map)
+                    for idx, row in df_batch.iterrows():
+                        n_val_b = float(row.get("nitrogen", row.get("n", 90.0)))
+                        p_val_b = float(row.get("phosphorus", row.get("p", 42.0)))
+                        k_val_b = float(row.get("potassium", row.get("k", 43.0)))
+                        temp_val_b = float(row.get("temperature", row.get("temp", 26.5)))
+                        hum_val_b = float(row.get("humidity", row.get("hum", 75.0)))
+                        ph_val_b = float(row.get("ph", 6.5))
+                        rain_val_b = float(row.get("rainfall", row.get("rain", 110.0)))
+
+                        pred = predict_and_explain(n_val_b, p_val_b, k_val_b, temp_val_b, hum_val_b, ph_val_b, rain_val_b, top_k=3)
+                        top_p = pred["recommendations"][0]
+                        batch_data.append({
+                            "Sample": idx + 1,
+                            "Recommended Crop": top_p["crop"],
+                            "Viability Score": f"{top_p['viability_score']*100:.1f}%",
+                            "Summary": top_p["explanations"]["human_readable_summary"]
+                        })
+                except Exception as batch_err:
+                    st.error(f"Batch processing error: {batch_err}")
+
+            if batch_data:
+                st.success(f"Successfully processed {len(batch_data)} soil-climate samples!")
+                st.dataframe(pd.DataFrame(batch_data), use_container_width=True)
 
 
 # ==============================================================================
@@ -1264,20 +1797,29 @@ with tab_batch:
 # ==============================================================================
 with tab_admin:
     st.header("Admin Dashboard")
-    headers = {"Authorization": f"Bearer {st.session_state['token']}"}
+    metrics = None
+    # 1. Try FastAPI endpoint
     try:
-        res = requests.get(f"{API_URL}/admin/metrics", headers=headers)
+        headers = {"Authorization": f"Bearer {st.session_state.get('token', '')}"}
+        res = requests.get(f"{API_URL}/admin/metrics", headers=headers, timeout=0.8)
         if res.status_code == 200:
             metrics = res.json()["data"]
-            col1, col2, col3, col4 = st.columns(4)
-            col1.metric("Total Users", metrics["total_users"])
-            col2.metric("Total Predictions", metrics["total_predictions"])
-            col3.metric("Top Predicted Crop", metrics["top_crop"])
-            col4.metric("System Status", metrics["system_status"])
-        else:
-            st.info("Log in with an Admin account to view system-wide telemetry.")
-    except Exception as e:
-        st.error(f"Admin API error: {e}")
+    except Exception:
+        pass
+
+    # 2. Direct SQLite query fallback
+    if not metrics:
+        try:
+            metrics = get_admin_metrics()
+        except Exception as e:
+            metrics = {"total_users": 1, "total_predictions": 0, "top_crop": "Rice", "system_status": "Healthy (Standalone Mode)"}
+
+    if metrics:
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("Total Registered Users", metrics.get("total_users", 1))
+        col2.metric("Total Predictions", metrics.get("total_predictions", 0))
+        col3.metric("Top Recommended Crop", metrics.get("top_crop", "Rice"))
+        col4.metric("System Health", metrics.get("system_status", "Healthy"))
 
 
 # ==============================================================================
@@ -1285,10 +1827,10 @@ with tab_admin:
 # ==============================================================================
 with tab_farms:
     st.header("My Farms (Saved Profiles)")
-    headers = {"Authorization": f"Bearer {st.session_state['token']}"}
+    uid = get_user_id_by_username(st.session_state.get("username", "")) or 1
     with st.expander("➕ Add New Farm", expanded=False):
         with st.form("add_farm_form"):
-            farm_name = st.text_input("Farm Name (e.g., 'North Field')")
+            farm_name = st.text_input("Farm Name (e.g., 'North Field Block A')")
             f_lat = st.number_input("Latitude", value=13.0, min_value=-90.0, max_value=90.0)
             f_lon = st.number_input("Longitude", value=80.0, min_value=-180.0, max_value=180.0)
             f_n = st.number_input("Nitrogen (mg/kg)", value=90.0)
@@ -1297,11 +1839,46 @@ with tab_farms:
             f_ph = st.number_input("pH Level", value=6.5, min_value=2.0, max_value=12.0)
             submitted = st.form_submit_button("Save Farm")
             if submitted and farm_name:
-                payload = {"farm_name": farm_name, "latitude": f_lat, "longitude": f_lon, "nitrogen": f_n, "phosphorus": f_p, "potassium": f_k, "ph": f_ph}
-                res = requests.post(f"{API_URL}/farms", headers=headers, json=payload)
-                if res.status_code == 200:
-                    st.success(f"Farm '{farm_name}' saved!")
+                saved = False
+                try:
+                    payload = {"farm_name": farm_name, "latitude": f_lat, "longitude": f_lon, "nitrogen": f_n, "phosphorus": f_p, "potassium": f_k, "ph": f_ph}
+                    res = requests.post(f"{API_URL}/farms", headers={"Authorization": f"Bearer {st.session_state['token']}"}, json=payload, timeout=0.8)
+                    if res.status_code == 200:
+                        saved = True
+                except Exception:
+                    pass
+                if not saved:
+                    create_user_farm(uid, farm_name, f_lat, f_lon, f_n, f_p, f_k, f_ph)
+                st.success(f"Farm '{farm_name}' successfully saved!")
+                st.rerun()
+
+    # List saved farms
+    farms_list = []
+    try:
+        res = requests.get(f"{API_URL}/farms", headers={"Authorization": f"Bearer {st.session_state['token']}"}, timeout=0.8)
+        if res.status_code == 200:
+            farms_list = res.json().get("data", [])
+    except Exception:
+        pass
+    if not farms_list:
+        farms_list = get_user_farms(uid)
+
+    if farms_list:
+        st.markdown("#### Registered Farm Profiles")
+        for f in farms_list:
+            col_fa, col_fb = st.columns([4, 1])
+            with col_fa:
+                st.markdown(f"🌾 **{f['farm_name']}** (Lat: `{f['latitude']}`, Lon: `{f['longitude']}`) | N: `{f['nitrogen']}` P: `{f['phosphorus']}` K: `{f['potassium']}` pH: `{f['ph']}`")
+            with col_fb:
+                if st.button("Delete Farm", key=f"del_farm_{f['id']}"):
+                    try:
+                        requests.delete(f"{API_URL}/farms/{f['id']}", headers={"Authorization": f"Bearer {st.session_state['token']}"}, timeout=0.8)
+                    except Exception:
+                        pass
+                    delete_user_farm(f['id'], uid)
                     st.rerun()
+    else:
+        st.info("No farm holdings registered yet. Use the form above to add your first farm parcel.")
 
 
 # ==============================================================================
@@ -1310,37 +1887,48 @@ with tab_farms:
 with tab_api:
     st.header("Developer API Keys & Microservices")
     st.write("Generate API keys to programmatically interact with CropMind AI prediction and advisory microservices.")
+    uid = get_user_id_by_username(st.session_state.get("username", "")) or 1
 
     col_k1, col_k2 = st.columns([1, 2])
     with col_k1:
         if st.button("Generate New API Key"):
-            headers = {"Authorization": f"Bearer {st.session_state['token']}"}
-            res = requests.post(f"{API_URL}/keys", headers=headers)
-            if res.status_code == 200:
-                new_key = res.json()["api_key"]
-                st.success("API Key Generated Successfully!")
-                st.code(new_key, language="bash")
-                st.info("Please copy your key now. For security reasons, it cannot be displayed again.")
-            else:
-                st.error("Failed to generate API Key.")
+            new_key = None
+            try:
+                res = requests.post(f"{API_URL}/keys", headers={"Authorization": f"Bearer {st.session_state['token']}"}, timeout=0.8)
+                if res.status_code == 200:
+                    new_key = res.json()["api_key"]
+            except Exception:
+                pass
+            if not new_key:
+                new_key = create_api_key(user_id=uid)
+            st.success("API Key Generated Successfully!")
+            st.code(new_key, language="bash")
+            st.info("Please copy your key now. For security reasons, it cannot be displayed again.")
 
     with col_k2:
         st.subheader("Active API Keys")
-        headers = {"Authorization": f"Bearer {st.session_state['token']}"}
+        keys = []
         try:
-            res = requests.get(f"{API_URL}/keys", headers=headers)
+            res = requests.get(f"{API_URL}/keys", headers={"Authorization": f"Bearer {st.session_state['token']}"}, timeout=0.8)
             if res.status_code == 200:
                 keys = res.json().get("data", [])
-                if keys:
-                    for k in keys:
-                        st.markdown(f"**Key ID:** `{k['id']}` | **Created:** `{k['created_at']}`")
-                        if st.button(f"Revoke Key {k['id']}", key=f"revoke_{k['id']}"):
-                            requests.delete(f"{API_URL}/keys/{k['id']}", headers=headers)
-                            st.rerun()
-                else:
-                    st.info("No active API keys found.")
-        except Exception as e:
-            st.error(f"API Error: {e}")
+        except Exception:
+            pass
+        if not keys:
+            keys = get_user_api_keys(user_id=uid)
+
+        if keys:
+            for k in keys:
+                st.markdown(f"**Key ID:** `{k['id']}` | **Key:** `{k['api_key'][:8]}...` | **Created:** `{k['created_at']}`")
+                if st.button(f"Revoke Key {k['id']}", key=f"revoke_{k['id']}"):
+                    try:
+                        requests.delete(f"{API_URL}/keys/{k['id']}", headers={"Authorization": f"Bearer {st.session_state['token']}"}, timeout=0.8)
+                    except Exception:
+                        pass
+                    delete_api_key(k['id'], uid)
+                    st.rerun()
+        else:
+            st.info("No active API keys found.")
 
     st.markdown("### Example API Microservice Call")
     st.code(
