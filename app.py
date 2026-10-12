@@ -115,123 +115,167 @@ st.markdown(
         font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     }
 
-    /* Stitch Level 0 Background */
-    .stApp {
-        background-color: #0B1326;
-        color: #DAE2FD;
+    /* CSS Animations */
+    @keyframes floatUp {
+        0% { opacity: 0; transform: translateY(10px); }
+        100% { opacity: 1; transform: translateY(0); }
     }
 
-    /* Stitch Top App Bar / Header */
+    /* Stitch Level 0 Background - Vercel/Linear Tech Dark */
+    .stApp {
+        background-color: #0A0A0A;
+        color: #FAFAFA;
+    }
+
+    /* Streamlit Tabs Overhaul - Minimal Tech */
+    div[data-baseweb="tab-list"] {
+        gap: 8px;
+        background-color: transparent;
+        padding: 0;
+        border-bottom: 1px solid #27272A;
+    }
+    button[data-baseweb="tab"] {
+        background-color: transparent !important;
+        border-radius: 0 !important;
+        border: none !important;
+        padding: 12px 16px !important;
+        color: #A1A1AA !important;
+        font-weight: 500 !important;
+    }
+    button[data-baseweb="tab"][aria-selected="true"] {
+        color: #FAFAFA !important;
+        border-bottom: 2px solid #FAFAFA !important;
+    }
+    div[data-baseweb="tab-highlight"] { display: none !important; }
+
+    /* Streamlit Input Fields - Ultra Clean */
+    .stTextInput > div > div > input, .stNumberInput > div > div > input {
+        background-color: #000000 !important;
+        border-radius: 6px !important;
+        color: #FAFAFA !important;
+        border: 1px solid #27272A !important;
+        padding: 12px 16px !important;
+        transition: all 0.2s ease;
+        box-shadow: none !important;
+    }
+    .stTextInput > div > div > input:focus, .stNumberInput > div > div > input:focus {
+        border: 1px solid #10B981 !important;
+        box-shadow: 0 0 0 1px #10B981 !important;
+    }
+    
+    /* Login & Action Button - Tech Green */
+    .stButton > button {
+        background-color: #10B981 !important;
+        color: #000000 !important;
+        border: none !important;
+        border-radius: 6px !important;
+        padding: 10px 20px !important;
+        font-weight: 600 !important;
+        transition: all 0.2s ease;
+        box-shadow: none !important;
+    }
+    .stButton > button:hover {
+        background-color: #34D399 !important;
+    }
+
+    /* Cards - Flat Dark Gray */
+    .stitch-header, .stitch-card, .stitch-card-primary, .stitch-card-highlight {
+        background-color: #111111 !important;
+        border-radius: 8px !important;
+        border: 1px solid #27272A !important;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.5) !important;
+        animation: floatUp 0.5s ease-out forwards;
+    }
+
     .stitch-header {
-        background: #171F33;
-        border: 1px solid #334155;
-        border-radius: 6px;
-        padding: 20px 24px;
-        margin-bottom: 20px;
+        padding: 40px 30px;
+        margin-bottom: 40px;
         display: flex;
-        justify-content: space-between;
+        flex-direction: column;
+        justify-content: center;
         align-items: center;
+        text-align: center;
     }
     .stitch-brand {
-        font-size: 1.5rem;
+        font-size: 3rem;
         font-weight: 700;
-        color: #FFFFFF;
-        letter-spacing: -0.02em;
+        color: #FAFAFA;
+        letter-spacing: -0.05em;
+        margin-bottom: 8px;
     }
     .stitch-tagline {
-        font-size: 0.88rem;
-        color: #94A3B8;
-        margin-top: 4px;
+        font-size: 1rem;
+        color: #A1A1AA;
+        max-width: 600px;
+        line-height: 1.5;
+        margin-top: 0;
+        margin-bottom: 24px;
+    }
+    .header-badges {
+        display: flex;
+        gap: 12px;
+        justify-content: center;
     }
 
-    /* Stitch Level 1 Cards */
+    /* Stitch Level 1 Cards Details */
     .stitch-card {
-        background: #171F33;
-        border: 1px solid #334155;
-        border-radius: 4px;
-        padding: 20px;
-        margin-bottom: 16px;
+        padding: 24px;
+        margin-bottom: 24px;
     }
     .stitch-card-primary {
-        background: #171F33;
-        border: 1px solid #10B981;
-        border-left: 4px solid #10B981;
-        border-radius: 4px;
-        padding: 20px;
-        margin-bottom: 16px;
+        padding: 24px;
+        margin-bottom: 24px;
+        border-left: 2px solid #10B981 !important;
     }
     .stitch-card-highlight {
-        background: #171F33;
-        border: 1px solid #38BDF8;
-        border-left: 4px solid #38BDF8;
-        border-radius: 4px;
-        padding: 20px;
-        margin-bottom: 16px;
+        padding: 24px;
+        margin-bottom: 24px;
+        border-left: 2px solid #38BDF8 !important;
     }
 
-    /* Stitch Pill Badges */
+    /* Stitch Pill Badges - Flat */
     .stitch-pill {
         display: inline-block;
-        padding: 3px 10px;
+        padding: 4px 12px;
         border-radius: 9999px;
-        font-size: 0.72rem;
+        font-size: 0.7rem;
         font-weight: 600;
-        text-transform: uppercase;
         letter-spacing: 0.05em;
-        margin-right: 6px;
+        border: 1px solid #27272A;
+        background-color: #0A0A0A;
     }
-    .pill-optimal {
-        background: rgba(16, 185, 129, 0.15);
-        color: #10B981;
-        border: 1px solid rgba(16, 185, 129, 0.3);
-    }
-    .pill-warning {
-        background: rgba(245, 158, 11, 0.15);
-        color: #F59E0B;
-        border: 1px solid rgba(245, 158, 11, 0.3);
-    }
-    .pill-error {
-        background: rgba(239, 68, 68, 0.15);
-        color: #EF4444;
-        border: 1px solid rgba(239, 68, 68, 0.3);
-    }
-    .pill-info {
-        background: rgba(56, 189, 248, 0.15);
-        color: #38BDF8;
-        border: 1px solid rgba(56, 189, 248, 0.3);
-    }
-    .pill-neutral {
-        background: rgba(148, 163, 184, 0.15);
-        color: #94A3B8;
-        border: 1px solid rgba(148, 163, 184, 0.3);
-    }
+    .pill-optimal { color: #10B981; border-color: #10B981; background: rgba(16, 185, 129, 0.1); }
+    .pill-warning { color: #F59E0B; border-color: #F59E0B; background: rgba(245, 158, 11, 0.1); }
+    .pill-error { color: #EF4444; border-color: #EF4444; background: rgba(239, 68, 68, 0.1); }
+    .pill-info { color: #38BDF8; border-color: #38BDF8; background: rgba(56, 189, 248, 0.1); }
+    .pill-neutral { color: #A1A1AA; }
 
     /* Typography & Numeric Display */
     .metric-value-huge {
-        font-size: 2.75rem;
+        font-size: 2.5rem;
         font-weight: 700;
-        color: #FFFFFF;
+        color: #FAFAFA;
         line-height: 1;
-        letter-spacing: -0.03em;
+        letter-spacing: -0.04em;
     }
     .metric-subtext {
         font-size: 0.85rem;
-        color: #94A3B8;
+        color: #A1A1AA;
         margin-top: 6px;
     }
     .code-metric {
-        font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+        font-family: 'SFMono-Regular', Consolas, monospace;
         font-size: 0.85rem;
         color: #38BDF8;
     }
     .confidence-badge {
-        font-size: 0.85rem;
-        font-weight: 700;
-        padding: 4px 10px;
+        font-size: 0.8rem;
+        font-weight: 600;
+        padding: 2px 8px;
         border-radius: 4px;
-        background: rgba(56, 189, 248, 0.15);
-        border: 1px solid rgba(56, 189, 248, 0.4);
         color: #38BDF8;
+        background: rgba(56, 189, 248, 0.1);
+        border: 1px solid rgba(56, 189, 248, 0.3);
     }
 </style>
 """,
@@ -242,13 +286,11 @@ st.markdown(
 st.markdown(
     f"""
     <div class="stitch-header">
-        <div>
-            <div class="stitch-brand">{get_translation(lang, "title")}</div>
-            <div class="stitch-tagline">
-                {get_translation(lang, "tagline")}
-            </div>
+        <div class="stitch-brand">{get_translation(lang, "title")}</div>
+        <div class="stitch-tagline">
+            {get_translation(lang, "tagline")}
         </div>
-        <div>
+        <div class="header-badges">
             <span class="stitch-pill pill-optimal">PRD/TRD v1.0.0</span>
             <span class="stitch-pill pill-info">Dual-Auth Engine</span>
             <span class="stitch-pill pill-neutral">Geohash-6 Cache</span>
