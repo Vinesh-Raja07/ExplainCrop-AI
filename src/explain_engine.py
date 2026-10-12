@@ -17,6 +17,7 @@ import json
 import joblib
 import numpy as np
 import pandas as pd
+import shap
 from typing import Dict, Any, List, Tuple, Optional
 
 MODELS_DIR = os.path.join(BASE_DIR, "models")
@@ -83,7 +84,14 @@ class OpticCropEngine:
 
         self.model = joblib.load(model_path)
         self.encoder = joblib.load(encoder_path)
-        self.explainer = joblib.load(explainer_path)
+
+        # Directly instantiate C++ TreeExplainer from the XGBoost model.
+        # This completely avoids fragile cross-environment unpickling (e.g. Python 3.12 vs 3.14,
+        # missing numba/cloudpickle/numpy internals on Streamlit Cloud) and initializes in < 5ms.
+        self.explainer = shap.TreeExplainer(
+            self.model,
+            feature_perturbation="tree_path_dependent"
+        )
 
         if os.path.exists(bg_path):
             self.background_centroids = joblib.load(bg_path)

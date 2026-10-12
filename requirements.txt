@@ -1,5 +1,7 @@
 xgboost>=2.0.0
 shap>=0.45.0
+numba>=0.59.0
+cloudpickle>=3.0.0
 fastapi>=0.110.0
 uvicorn>=0.28.0
 streamlit>=1.35.0
