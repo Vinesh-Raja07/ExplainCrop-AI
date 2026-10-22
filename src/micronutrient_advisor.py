@@ -51,6 +51,31 @@ MICRONUTRIENT_DEFICIENCY_PROFILES = {
     }
 }
 
+CROP_MICRONUTRIENT_SENSITIVITY: Dict[str, List[str]] = {
+    "Rice": ["Zinc (Zn)", "Iron (Fe)"],
+    "Wheat": ["Zinc (Zn)", "Copper (Cu)", "Boron (B)"],
+    "Maize": ["Zinc (Zn)", "Iron (Fe)", "Manganese (Mn)"],
+    "Cotton": ["Zinc (Zn)", "Boron (B)", "Magnesium (Mg)"],
+    "Sugarcane": ["Iron (Fe)", "Zinc (Zn)", "Sulfur (S)"],
+    "Groundnut": ["Sulfur (S)", "Iron (Fe)", "Boron (B)"],
+    "Soybean": ["Iron (Fe)", "Zinc (Zn)", "Sulfur (S)"],
+    "Pigeonpea": ["Boron (B)", "Sulfur (S)", "Zinc (Zn)"],
+    "Chickpea": ["Iron (Fe)", "Boron (B)", "Sulfur (S)"],
+    "Mungbean": ["Zinc (Zn)", "Iron (Fe)"],
+    "Blackgram": ["Zinc (Zn)", "Iron (Fe)"],
+    "Lentil": ["Zinc (Zn)", "Boron (B)"],
+    "Pomegranate": ["Boron (B)", "Zinc (Zn)", "Iron (Fe)"],
+    "Banana": ["Zinc (Zn)", "Boron (B)", "Iron (Fe)"],
+    "Mango": ["Zinc (Zn)", "Boron (B)", "Copper (Cu)"],
+    "Grapes": ["Iron (Fe)", "Zinc (Zn)", "Boron (B)"],
+    "Apple": ["Zinc (Zn)", "Boron (B)", "Calcium (Ca)"],
+    "Orange": ["Zinc (Zn)", "Iron (Fe)", "Copper (Cu)"],
+    "Papaya": ["Boron (B)", "Zinc (Zn)"],
+    "Coconut": ["Boron (B)", "Chlorine (Cl)"],
+    "Jute": ["Zinc (Zn)", "Sulfur (S)"],
+    "Coffee": ["Zinc (Zn)", "Boron (B)", "Iron (Fe)"],
+}
+
 
 def diagnose_micronutrient_deficiencies(
     crop_name: str,
@@ -112,6 +137,58 @@ def diagnose_micronutrient_deficiencies(
     })
 
     high_risk_count = sum(1 for e in diagnosed_elements if "High" in e["risk_level"])
+    mod_risk_count = sum(1 for e in diagnosed_elements if "Moderate" in e["risk_level"])
+    
+    if high_risk_count > 0:
+        overall_risk = "High"
+    elif mod_risk_count > 0:
+        overall_risk = "Moderate"
+    else:
+        overall_risk = "Low"
+
+    sensitive_nutrients = CROP_MICRONUTRIENT_SENSITIVITY.get(crop_key, ["Zinc (Zn)", "Iron (Fe)", "Boron (B)"])
+    crop_sensitivity_profile = {
+        "crop": crop_key,
+        "high_sensitivity_nutrients": ", ".join(sensitive_nutrients)
+    }
+
+    # Structured mapping for tab UI
+    deficiencies_detected = {
+        "zn": {
+            "status": zn_risk,
+            "critical_threshold_ppm": "0.6 ppm",
+            "observed_ppm": f"{soil_zn_ppm:.2f} ppm" if soil_zn_ppm is not None else "pH Dependent (Alkalinity Gap)" if soil_ph >= 7.6 else "Adequate",
+            "impact": MICRONUTRIENT_DEFICIENCY_PROFILES["Zinc (Zn)"]["visual_symptoms"]
+        },
+        "fe": {
+            "status": fe_risk,
+            "critical_threshold_ppm": "4.5 ppm",
+            "observed_ppm": f"{soil_fe_ppm:.2f} ppm" if soil_fe_ppm is not None else "Lime-Induced Fixation" if soil_ph >= 7.8 else "Adequate",
+            "impact": MICRONUTRIENT_DEFICIENCY_PROFILES["Iron (Fe)"]["visual_symptoms"]
+        },
+        "b": {
+            "status": b_risk,
+            "critical_threshold_ppm": "0.5 ppm",
+            "observed_ppm": f"{soil_b_ppm:.2f} ppm" if soil_b_ppm is not None else "Low Organic Carbon" if organic_matter_pct < 0.5 else "Adequate",
+            "impact": MICRONUTRIENT_DEFICIENCY_PROFILES["Boron (B)"]["visual_symptoms"]
+        },
+        "s": {
+            "status": s_risk,
+            "critical_threshold_ppm": "10.0 ppm",
+            "observed_ppm": f"{soil_s_ppm:.2f} ppm" if soil_s_ppm is not None else "Sub-optimal SOM" if organic_matter_pct < 0.6 else "Adequate",
+            "impact": MICRONUTRIENT_DEFICIENCY_PROFILES["Sulfur (S)"]["visual_symptoms"]
+        }
+    }
+
+    recommended_prescriptions = []
+    for elem in diagnosed_elements:
+        if "High" in elem["risk_level"] or "Moderate" in elem["risk_level"]:
+            recommended_prescriptions.append({
+                "Target Nutrient": elem["nutrient"],
+                "Deficiency Risk": elem["risk_level"],
+                "Foliar Spray Prescription": elem["foliar_remedy"],
+                "Soil Corrective Amendment": elem["soil_remedy"]
+            })
     
     return {
         "crop": crop_key,
@@ -120,6 +197,10 @@ def diagnose_micronutrient_deficiencies(
             "organic_matter_pct": organic_matter_pct
         },
         "overall_micronutrient_status": f"{high_risk_count} Micronutrient(s) at High Deficit Risk" if high_risk_count > 0 else "Micronutrient Levels Satisfactory",
+        "overall_deficiency_risk": overall_risk,
+        "crop_sensitivity_profile": crop_sensitivity_profile,
+        "deficiencies_detected": deficiencies_detected,
+        "recommended_prescriptions": recommended_prescriptions,
         "deficiency_profiles": diagnosed_elements,
         "foliar_spraying_guidance": (
             "Best spraying window: Early morning (7:00 AM - 9:30 AM) or late afternoon (4:00 PM - 6:00 PM). "

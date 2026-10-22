@@ -955,15 +955,19 @@ with tab_micronutrients:
         soil_s_ppm=s_ppm
     )
 
+    risk_level = micro_res.get("overall_deficiency_risk", "Moderate")
+    pill_class = "pill-error" if risk_level == "High" else "pill-warning" if risk_level == "Moderate" else "pill-optimal"
+    sensitivity_text = micro_res.get("crop_sensitivity_profile", {}).get("high_sensitivity_nutrients", "Zinc (Zn), Iron (Fe), Boron (B)")
+
     st.markdown("---")
     st.markdown(
         f"""
         <div class="stitch-card-highlight">
-            <span class="stitch-pill {'pill-error' if micro_res['overall_deficiency_risk'] == 'High' else 'pill-warning' if micro_res['overall_deficiency_risk'] == 'Moderate' else 'pill-optimal'}">
-                {micro_res['overall_deficiency_risk']} Micronutrient Stress
+            <span class="stitch-pill {pill_class}">
+                {risk_level} Micronutrient Stress
             </span>
             <div style="font-size: 0.9rem; color: #DAE2FD; margin-top: 8px;">
-                Crop Sensitivity: <strong>{micro_res['crop_sensitivity_profile']['high_sensitivity_nutrients']}</strong>
+                Crop Sensitivity: <strong>{sensitivity_text}</strong>
             </div>
         </div>
         """,
@@ -972,20 +976,43 @@ with tab_micronutrients:
 
     st.markdown("#### Diagnostic Deficit Summary")
     def_items = []
-    for nut, data in micro_res["deficiencies_detected"].items():
-        def_items.append({
-            "Nutrient": nut.upper(),
-            "Deficit Severity": data.get("status"),
-            "Critical Benchmark": data.get("critical_threshold_ppm", "pH Induced"),
-            "Observed / Est. Level": data.get("observed_ppm", "pH Availability Gap"),
-            "Impact On Crop": data.get("impact")
-        })
+    if "deficiencies_detected" in micro_res and isinstance(micro_res["deficiencies_detected"], dict):
+        for nut, data in micro_res["deficiencies_detected"].items():
+            def_items.append({
+                "Nutrient": nut.upper(),
+                "Deficit Severity": data.get("status"),
+                "Critical Benchmark": data.get("critical_threshold_ppm", "pH Induced"),
+                "Observed / Est. Level": data.get("observed_ppm", "pH Availability Gap"),
+                "Impact On Crop": data.get("impact")
+            })
+    elif "deficiency_profiles" in micro_res:
+        for item in micro_res["deficiency_profiles"]:
+            def_items.append({
+                "Nutrient": item.get("nutrient", "Unknown"),
+                "Deficit Severity": item.get("risk_level", "Unknown"),
+                "Critical Benchmark": "Soil pH / SOM",
+                "Observed / Est. Level": "Evaluated",
+                "Impact On Crop": item.get("visual_symptoms", "Deficiency symptoms")
+            })
     st.dataframe(pd.DataFrame(def_items), use_container_width=True)
 
     if micro_res.get("recommended_prescriptions"):
         st.markdown("#### Prescribed Corrective Sprays & Soil Amendments")
         rx_df = pd.DataFrame(micro_res["recommended_prescriptions"])
         st.dataframe(rx_df, use_container_width=True)
+    elif "deficiency_profiles" in micro_res:
+        prescriptions = []
+        for elem in micro_res["deficiency_profiles"]:
+            if "High" in elem.get("risk_level", "") or "Moderate" in elem.get("risk_level", ""):
+                prescriptions.append({
+                    "Target Nutrient": elem.get("nutrient", ""),
+                    "Deficiency Risk": elem.get("risk_level", ""),
+                    "Foliar Spray Prescription": elem.get("foliar_remedy", ""),
+                    "Soil Corrective Amendment": elem.get("soil_remedy", "")
+                })
+        if prescriptions:
+            st.markdown("#### Prescribed Corrective Sprays & Soil Amendments")
+            st.dataframe(pd.DataFrame(prescriptions), use_container_width=True)
 
 
 # ==============================================================================
