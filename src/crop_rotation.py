@@ -113,25 +113,34 @@ def generate_crop_rotation_plan(
     est_n_saved_kg = n_restoration * field_area_acres
     urea_equiv_bags = round((est_n_saved_kg / 0.46) / 50.0, 1)
     
-    rotation_schedule = [
+    rotation_sequence = [
         {
+            "phase": 1,
             "stage": "Phase 1: " + s1["season"],
+            "season": s1["season"],
             "crop": s1["crop"],
             "role": s1["role"],
+            "agronomic_rationale": "High biomass output & baseline pest scouting.",
             "nutrient_impact": "Nutrient utilization & high biomass output.",
             "disease_break_impact": "Establishes baseline crop with tailored pest scouting."
         },
         {
+            "phase": 2,
             "stage": "Phase 2: " + s2["season"],
+            "season": s2["season"],
             "crop": s2["crop"],
             "role": s2["role"],
+            "agronomic_rationale": f"Fixes ~{n_restoration:.0f} kg biological N/acre. Disrupts mono-crop pest cycles by 75%.",
             "nutrient_impact": f"Fixes ~{n_restoration:.0f} kg biological Nitrogen per acre into soil matrix.",
             "disease_break_impact": "Disrupts mono-cropping fungal and nematode pathogen lifecycles by 75%."
         },
         {
+            "phase": 3,
             "stage": "Phase 3: " + s3["season"],
+            "season": s3["season"],
             "crop": s3["crop"],
             "role": s3["role"],
+            "agronomic_rationale": "Adds 2-3 tonnes organic biomass and prevents summer soil crusting & weed establishment.",
             "nutrient_impact": "Prevents soil crusting and adds 2-3 tonnes organic carbon biomass.",
             "disease_break_impact": "Prevents weed seed banks from establishing during fallow window."
         }
@@ -142,8 +151,13 @@ def generate_crop_rotation_plan(
         "botanical_family": crop_info.get("family", "Unknown"),
         "crop_type": crop_info.get("type", "Standard"),
         "field_area_acres": field_area_acres,
-        "rotation_schedule": rotation_schedule,
+        "rotation_schedule": rotation_sequence,
+        "rotation_sequence": rotation_sequence,
         "companion_synergies": companions,
+        "soil_fertility_impact": {
+            "estimated_n_fixation_kg_acre": est_n_saved_kg,
+            "urea_bags_saved_50kg": urea_equiv_bags
+        },
         "ecological_benefits": {
             "biological_n_fixed_kg": est_n_saved_kg,
             "urea_bags_saved_50kg": urea_equiv_bags,

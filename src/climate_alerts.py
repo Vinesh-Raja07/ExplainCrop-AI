@@ -109,6 +109,31 @@ def evaluate_climate_anomalies(
 
     overall_climate_health = "Safe / Nominal Conditions" if len(active_alerts) == 0 else ("Severe Weather Stress" if any(a["severity"] == "Critical" for a in active_alerts) else "Elevated Climate Stress")
 
+    # Thermal and moisture stress scores normalized out of 100
+    thermal_stress = min(100.0, max(10.0, abs(temperature_c - 26.5) * 4.2))
+    moisture_stress = min(100.0, max(10.0, abs(rainfall_14d_mm - 110.0) * 0.55))
+    
+    stress_scores = {
+        "thermal_stress_score": round(thermal_stress, 1),
+        "moisture_stress_score": round(moisture_stress, 1)
+    }
+
+    composite_risk_level = (
+        "Critical" if any(a["severity"] == "Critical" for a in active_alerts)
+        else "Moderate" if len(active_alerts) > 0
+        else "Optimal / Nominal"
+    )
+
+    formatted_alerts = []
+    for a in active_alerts:
+        formatted_alerts.append({
+            "type": a.get("anomaly_type", "Climate Anomaly"),
+            "severity": a.get("severity", "Warning"),
+            "message": a.get("condition", ""),
+            "mitigation": a.get("emergency_mitigation", ""),
+            **a
+        })
+
     return {
         "crop": crop_key,
         "meteorological_state": {
@@ -119,8 +144,11 @@ def evaluate_climate_anomalies(
             "wind_speed_kmh": wind_speed_kmh
         },
         "overall_status": overall_climate_health,
+        "composite_risk_level": composite_risk_level,
+        "stress_scores": stress_scores,
         "total_active_alerts": len(active_alerts),
         "alerts": active_alerts,
+        "active_alerts": formatted_alerts,
         "general_preparedness_note": (
             "Climate risk alerts are computed using dynamic physiological tolerance thresholds. "
             "Execute listed mitigation protocols within 24 hours of forecast onset to minimize yield penalty."
