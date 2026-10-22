@@ -13,6 +13,7 @@ if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
 
 import json
+from typing import Optional, List, Dict, Any, Tuple
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -854,7 +855,7 @@ with tab_fertilizer:
 # ==============================================================================
 with tab_fertigation:
     st.markdown("### 💧 Precision Drip Fertigation & Water-Soluble Fertilizer (WSF) Calculator")
-    st.write("Calculates stage-specific fertigation dosing, tank dilutions, and electrical conductivity (EC) to avoid root salinity stress.")
+    st.write("Calculates stage-specific fertigation dosing, 2-tank compatibility separation, and electrical conductivity (EC) to avoid root salinity stress.")
 
     fc_col1, fc_col2 = st.columns([1, 1])
     with fc_col1:
@@ -885,20 +886,38 @@ with tab_fertigation:
     with fc_col2:
         m_c1, m_c2 = st.columns(2)
         with m_c1:
-            st.metric("Total Weekly Dose", f"{fert_sched['weekly_prescription']['total_wsf_kg_week']} kg/wk")
-            st.metric("Estimated Solution EC", f"{fert_sched['safety_parameters']['estimated_ec_ds_m']} dS/m")
+            total_wk = fert_sched.get("weekly_prescription", {}).get("total_wsf_kg_week", 0.0)
+            est_ec = fert_sched.get("safety_parameters", {}).get("estimated_ec_ds_m", 1.2)
+            st.metric("Total Weekly Dose", f"{total_wk} kg/wk")
+            st.metric("Estimated Solution EC", f"{est_ec} dS/m")
         with m_c2:
-            st.metric("Dosing Per Drip Cycle", f"{fert_sched['cycle_dosing']['wsf_kg_per_cycle']} kg/cycle")
-            st.metric("Salinity Safety Status", fert_sched['safety_parameters']['salinity_risk_status'])
+            cycle_dose = fert_sched.get("cycle_dosing", {}).get("wsf_kg_per_cycle", fert_sched.get("total_wsf_kg_per_cycle", 0.0))
+            salinity_stat = fert_sched.get("safety_parameters", {}).get("salinity_risk_status", "Safe / Optimal")
+            st.metric("Dosing Per Drip Cycle", f"{cycle_dose} kg/cycle")
+            st.metric("Salinity Safety Status", salinity_stat)
 
     st.markdown("---")
-    st.markdown("#### Prescribed Water-Soluble Formulations")
-    wsf_df = pd.DataFrame(fert_sched["weekly_prescription"]["recommended_wsf_sources"])
+    st.markdown("#### 🧪 Prescribed Water-Soluble Formulations & Dosing")
+    wsf_sources = fert_sched.get("weekly_prescription", {}).get("recommended_wsf_sources", [])
+    wsf_df = pd.DataFrame(wsf_sources)
     if not wsf_df.empty:
-        wsf_df["kg_per_cycle"] = (wsf_df["kg_per_acre_week"] * fert_acres / freq).round(2)
+        if "kg_per_acre_week" in wsf_df.columns:
+            wsf_df["Dose per Cycle (kg)"] = (wsf_df["kg_per_acre_week"] * fert_acres / freq).round(2)
         st.dataframe(wsf_df, use_container_width=True)
 
-    st.info(f"💡 **Operational Guideline**: {fert_sched['operational_notes']}")
+    st.markdown("#### 🛡️ 2-Tank Compatibility Separation (Emitter Clogging Prevention)")
+    tank_col1, tank_col2 = st.columns(2)
+    with tank_col1:
+        st.info("##### 🅰️ Tank A: Calcium & Nitrate Sources")
+        for item in fert_sched.get("tank_separation", {}).get("tank_a_calcium_nitrate_compatible", []):
+            st.markdown(f"- **{item}**")
+    with tank_col2:
+        st.success("##### 🅱️ Tank B: Phosphates, Sulfates & Micronutrients")
+        for item in fert_sched.get("tank_separation", {}).get("tank_b_phosphate_sulfate_compatible", []):
+            st.markdown(f"- **{item}**")
+
+    st.warning(f"⚠️ **Precipitation Warning**: {fert_sched.get('tank_separation', {}).get('safety_warning', 'Do not mix Calcium Nitrate with Phosphates or Sulfates in concentrated stock.')}")
+    st.info(f"💡 **Operational Guideline**: {fert_sched.get('operational_notes', 'Flush lines before and after injection.')}")
 
 
 # ==============================================================================
